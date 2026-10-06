@@ -1,51 +1,129 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import FirstAdminSetup from "./features/auth/FirstAdminSetup";
+import Login from "./features/auth/Login";
+
+import AppShell from "./layout/AppShell";
+
+import {
+  hasAdmin,
+} from "./features/auth/authService";
+
+import type {
+  AuthUser,
+} from "./types/auth";
+
+type AppState =
+  | "loading"
+  | "setup"
+  | "login"
+  | "authenticated"
+  | "error";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [appState, setAppState] =
+    useState<AppState>("loading");
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  const [currentUser, setCurrentUser] =
+    useState<AuthUser | null>(null);
+
+  const [error, setError] =
+    useState("");
+
+  useEffect(() => {
+    async function initialize() {
+      try {
+        const adminExists =
+          await hasAdmin();
+
+        setAppState(
+          adminExists
+            ? "login"
+            : "setup"
+        );
+      } catch (err) {
+        console.error(err);
+
+        setError(String(err));
+        setAppState("error");
+      }
+    }
+
+    initialize();
+  }, []);
+
+  function handleLogin(
+    user: AuthUser
+  ) {
+    setCurrentUser(user);
+    setAppState("authenticated");
   }
 
-  return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+  function handleLogout() {
+    setCurrentUser(null);
+    setAppState("login");
+  }
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+  if (appState === "loading") {
+    return (
+      <main className="auth-page">
+        <p>
+          Starting Project S...
+        </p>
+      </main>
+    );
+  }
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
-  );
+  if (appState === "setup") {
+    return (
+      <FirstAdminSetup
+        onComplete={() =>
+          setAppState("login")
+        }
+      />
+    );
+  }
+
+  if (appState === "login") {
+    return (
+      <Login
+        onLogin={handleLogin}
+      />
+    );
+  }
+
+  if (
+  appState === "authenticated" &&
+  currentUser
+  ) {
+    return (
+      <AppShell
+        user={currentUser}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (appState === "error") {
+    return (
+      <main className="auth-page">
+        <section className="setup-card">
+          <h1>Project S</h1>
+
+          <p>
+            Failed to initialize.
+          </p>
+
+          <p>{error}</p>
+        </section>
+      </main>
+    );
+  }
+
+  return null;
 }
 
 export default App;
