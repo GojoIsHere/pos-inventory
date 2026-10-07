@@ -3004,6 +3004,7 @@ dependencies = [
  "argon2",
  "serde",
  "serde_json",
+ "sqlx",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",

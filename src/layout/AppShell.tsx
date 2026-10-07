@@ -8,6 +8,8 @@ import PlaceholderPage from "../components/PlaceholderPage";
 
 import "./app-shell.css";
 
+import ProductsPage from "../features/products/ProductsPage";
+
 interface AppShellProps {
   user: AuthUser;
   onLogout: () => void;
@@ -109,10 +111,9 @@ export default function AppShell({
 
       case "products":
         return (
-          <PlaceholderPage
-            title="Products"
-            description="Products, categories, clothing variants, SKUs and barcodes will live here."
-          />
+            <ProductsPage
+            user={user}
+            />
         );
 
       case "inventory":
