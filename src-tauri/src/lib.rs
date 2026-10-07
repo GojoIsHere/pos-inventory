@@ -1998,7 +1998,1860 @@ async fn save_settings(
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompleteExchangeInput {
+    original_sale_item_id: i64,
 
+    replacement_variant_id: i64,
+
+    quantity: i64,
+
+    processed_by: i64,
+
+    payment_method: Option<String>,
+
+    payment_reference: Option<String>,
+
+    cash_received_paisa: Option<i64>,
+}
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompleteExchangeResult {
+    exchange_id: i64,
+
+    original_receipt_number: String,
+
+    returned_product_name: String,
+    returned_sku: String,
+    returned_size: Option<String>,
+    returned_color: Option<String>,
+
+    replacement_product_name: String,
+    replacement_sku: String,
+    replacement_size: Option<String>,
+    replacement_color: Option<String>,
+
+    quantity: i64,
+
+    price_difference_paisa: i64,
+
+    payment_method: Option<String>,
+
+    cash_received_paisa: Option<i64>,
+
+    change_paisa: Option<i64>,
+}
+
+#[tauri::command]
+async fn complete_exchange(
+    input: CompleteExchangeInput,
+    db_instances: State<'_, DbInstances>,
+) -> Result<CompleteExchangeResult, String> {
+    let CompleteExchangeInput {
+        original_sale_item_id,
+        replacement_variant_id,
+        quantity,
+        processed_by,
+        payment_method,
+        payment_reference,
+        cash_received_paisa,
+    } = input;
+
+    if quantity <= 0 {
+        return Err(
+            "Exchange quantity must be greater than zero."
+                .to_string(),
+        );
+    }
+
+    let instances =
+        db_instances.0.read().await;
+
+    let database = instances
+        .get("sqlite:pos_inventory.db")
+        .ok_or_else(|| {
+            "Project S database is not loaded."
+                .to_string()
+        })?;
+
+    #[allow(unreachable_patterns)]
+    let pool = match database {
+        DbPool::Sqlite(pool) => pool,
+
+        _ => {
+            return Err(
+                "Project S requires SQLite."
+                    .to_string(),
+            );
+        }
+    };
+
+    let mut transaction =
+        pool.begin()
+            .await
+            .map_err(|error| {
+                format!(
+                    "Could not start exchange transaction: {}",
+                    error
+                )
+            })?;
+
+    /*
+     * Admin or cashier can process
+     * exchanges.
+     */
+    ensure_pos_user(
+        &mut transaction,
+        processed_by,
+    )
+    .await?;
+
+    /*
+     * Load the ORIGINAL sale item.
+     *
+     * We use the historical sale-item
+     * snapshot for the original price.
+     */
+    let original: Option<(
+        i64,
+        i64,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        i64,
+        i64,
+        String,
+    )> = sqlx::query_as(
+        "
+        SELECT
+            si.sale_id,
+            si.variant_id,
+
+            si.product_name,
+            si.sku,
+            si.size,
+            si.color,
+
+            si.quantity,
+
+            si.unit_price_paisa,
+
+            s.receipt_number
+
+        FROM sale_items si
+
+        INNER JOIN sales s
+            ON s.id = si.sale_id
+
+        WHERE
+            si.id = $1
+
+            AND s.status IN (
+                'completed',
+                'partially_refunded'
+            )
+
+        LIMIT 1;
+        ",
+    )
+    .bind(original_sale_item_id)
+    .fetch_optional(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to load original sale item: {}",
+            error
+        )
+    })?;
+
+    let (
+        original_sale_id,
+        returned_variant_id,
+
+        returned_product_name,
+        returned_sku,
+        returned_size,
+        returned_color,
+
+        original_quantity,
+
+        original_unit_price_paisa,
+
+        receipt_number,
+    ) = original.ok_or_else(|| {
+        "The original sale item could not be exchanged."
+            .to_string()
+    })?;
+
+    if returned_variant_id
+        == replacement_variant_id
+    {
+        return Err(
+            "Choose a different size or variant."
+                .to_string(),
+        );
+    }
+
+    /*
+     * How many units of this original
+     * line have already been exchanged?
+     */
+    let already_exchanged: i64 =
+        sqlx::query_scalar(
+            "
+            SELECT
+                COALESCE(
+                    SUM(
+                        ei.quantity
+                    ),
+                    0
+                )
+
+            FROM exchange_items ei
+
+            INNER JOIN exchanges e
+                ON e.id =
+                    ei.exchange_id
+
+            WHERE
+                ei.original_sale_item_id
+                    = $1
+
+                AND e.status =
+                    'completed';
+            ",
+        )
+        .bind(original_sale_item_id)
+        .fetch_one(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to verify previous exchanges: {}",
+                error
+            )
+        })?;
+
+    let remaining_quantity =
+        original_quantity
+            .checked_sub(
+                already_exchanged
+            )
+            .ok_or_else(|| {
+                "Invalid exchange history."
+                    .to_string()
+            })?;
+
+    if quantity >
+        remaining_quantity
+    {
+        return Err(format!(
+            "Only {} unit(s) remain available for exchange.",
+            remaining_quantity
+        ));
+    }
+
+    /*
+     * Load replacement from the live
+     * catalog and live inventory.
+     */
+    let replacement: Option<(
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        i64,
+        i64,
+    )> = sqlx::query_as(
+        "
+        SELECT
+            p.name,
+            pv.sku,
+            pv.size,
+            pv.color,
+
+            pv.selling_price_paisa,
+
+            i.quantity_on_hand
+
+        FROM product_variants pv
+
+        INNER JOIN products p
+            ON p.id =
+                pv.product_id
+
+        INNER JOIN inventory i
+            ON i.variant_id =
+                pv.id
+
+        WHERE
+            pv.id = $1
+
+            AND pv.is_active = 1
+            AND p.is_active = 1
+
+        LIMIT 1;
+        ",
+    )
+    .bind(replacement_variant_id)
+    .fetch_optional(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to load replacement variant: {}",
+            error
+        )
+    })?;
+
+    let (
+        replacement_product_name,
+        replacement_sku,
+        replacement_size,
+        replacement_color,
+
+        replacement_unit_price_paisa,
+
+        replacement_stock,
+    ) = replacement.ok_or_else(|| {
+        "Replacement variant is no longer available."
+            .to_string()
+    })?;
+
+    if replacement_stock <
+        quantity
+    {
+        return Err(format!(
+            "Not enough stock for {}. Available: {}.",
+            replacement_sku,
+            replacement_stock
+        ));
+    }
+
+    /*
+     * Difference:
+     *
+     * replacement - original
+     */
+    let difference_per_unit =
+        replacement_unit_price_paisa
+            .checked_sub(
+                original_unit_price_paisa
+            )
+            .ok_or_else(|| {
+                "Price difference is too large."
+                    .to_string()
+            })?;
+
+    let price_difference_paisa =
+        difference_per_unit
+            .checked_mul(quantity)
+            .ok_or_else(|| {
+                "Price difference is too large."
+                    .to_string()
+            })?;
+
+    /*
+     * Lower-price exchange requires
+     * money going back to customer.
+     *
+     * We deliberately block that until
+     * the refund workflow exists.
+     */
+    if price_difference_paisa < 0 {
+        return Err(
+            "This replacement costs less than the original item. Complete the refund workflow before processing this exchange."
+                .to_string(),
+        );
+    }
+
+    let clean_reference =
+        clean_optional(
+            payment_reference
+        );
+
+    let mut final_payment_method:
+        Option<String> =
+        None;
+
+    let mut final_cash_received:
+        Option<i64> =
+        None;
+
+    let mut change_paisa:
+        Option<i64> =
+        None;
+
+    /*
+     * Only collect payment when the
+     * replacement is more expensive.
+     */
+    if price_difference_paisa > 0 {
+        let method =
+            payment_method
+                .ok_or_else(|| {
+                    "Select a payment method for the price difference."
+                        .to_string()
+                })?
+                .trim()
+                .to_lowercase();
+
+        if method != "cash"
+            && method != "qr"
+        {
+            return Err(
+                "Payment method must be cash or QR."
+                    .to_string(),
+            );
+        }
+
+        if method == "cash" {
+            let received =
+                cash_received_paisa
+                    .ok_or_else(|| {
+                        "Enter the cash received."
+                            .to_string()
+                    })?;
+
+            if received <
+                price_difference_paisa
+            {
+                return Err(
+                    "Cash received is less than the amount due."
+                        .to_string(),
+                );
+            }
+
+            final_cash_received =
+                Some(received);
+
+            change_paisa =
+                Some(
+                    received
+                        - price_difference_paisa
+                );
+        }
+
+        if method == "qr" {
+            let require_reference:
+                Option<String> =
+                sqlx::query_scalar(
+                    "
+                    SELECT value
+                    FROM settings
+                    WHERE key =
+                        'require_qr_reference'
+                    LIMIT 1;
+                    ",
+                )
+                .fetch_optional(
+                    &mut *transaction
+                )
+                .await
+                .map_err(|error| {
+                    format!(
+                        "Failed to load QR settings: {}",
+                        error
+                    )
+                })?;
+
+            let qr_required =
+                require_reference
+                    .as_deref()
+                    == Some("true");
+
+            if qr_required
+                && clean_reference
+                    .is_none()
+            {
+                return Err(
+                    "QR transaction reference is required."
+                        .to_string(),
+                );
+            }
+        }
+
+        final_payment_method =
+            Some(method);
+    }
+
+    /*
+     * Create exchange record.
+     */
+    let exchange_result =
+        sqlx::query(
+            "
+            INSERT INTO exchanges (
+                original_sale_id,
+                processed_by,
+                status,
+                price_difference_paisa
+            )
+            VALUES (
+                $1,
+                $2,
+                'completed',
+                $3
+            );
+            ",
+        )
+        .bind(original_sale_id)
+        .bind(processed_by)
+        .bind(price_difference_paisa)
+        .execute(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to create exchange: {}",
+                error
+            )
+        })?;
+
+    let exchange_id =
+        exchange_result
+            .last_insert_rowid();
+
+    /*
+     * Snapshot both sides of the
+     * exchange.
+     */
+    sqlx::query(
+        "
+        INSERT INTO exchange_items (
+            exchange_id,
+            original_sale_item_id,
+
+            returned_variant_id,
+            replacement_variant_id,
+
+            quantity,
+
+            returned_product_name,
+            returned_sku,
+            returned_size,
+            returned_color,
+
+            replacement_product_name,
+            replacement_sku,
+            replacement_size,
+            replacement_color,
+
+            original_unit_price_paisa,
+            replacement_unit_price_paisa
+        )
+        VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            $11,
+            $12,
+            $13,
+            $14,
+            $15
+        );
+        ",
+    )
+    .bind(exchange_id)
+    .bind(original_sale_item_id)
+
+    .bind(returned_variant_id)
+    .bind(replacement_variant_id)
+
+    .bind(quantity)
+
+    .bind(&returned_product_name)
+    .bind(&returned_sku)
+    .bind(&returned_size)
+    .bind(&returned_color)
+
+    .bind(&replacement_product_name)
+    .bind(&replacement_sku)
+    .bind(&replacement_size)
+    .bind(&replacement_color)
+
+    .bind(original_unit_price_paisa)
+    .bind(replacement_unit_price_paisa)
+
+    .execute(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to save exchange item: {}",
+            error
+        )
+    })?;
+
+    /*
+     * RETURNED item comes back.
+     */
+    let return_update =
+        sqlx::query(
+            "
+            UPDATE inventory
+
+            SET
+                quantity_on_hand =
+                    quantity_on_hand + $1,
+
+                updated_at =
+                    CURRENT_TIMESTAMP
+
+            WHERE
+                variant_id = $2;
+            ",
+        )
+        .bind(quantity)
+        .bind(returned_variant_id)
+        .execute(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to return exchanged inventory: {}",
+                error
+            )
+        })?;
+
+    if return_update
+        .rows_affected()
+        != 1
+    {
+        return Err(
+            "Returned variant inventory could not be updated."
+                .to_string(),
+        );
+    }
+
+    sqlx::query(
+        "
+        INSERT INTO inventory_movements (
+            variant_id,
+            movement_type,
+            quantity_change,
+
+            reference_type,
+            reference_id,
+
+            note,
+
+            created_by
+        )
+        VALUES (
+            $1,
+            'exchange_return',
+            $2,
+            'exchange',
+            $3,
+            $4,
+            $5
+        );
+        ",
+    )
+    .bind(returned_variant_id)
+    .bind(quantity)
+    .bind(exchange_id)
+    .bind(
+        format!(
+            "Exchange return from receipt {}",
+            receipt_number
+        )
+    )
+    .bind(processed_by)
+    .execute(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to record returned inventory movement: {}",
+            error
+        )
+    })?;
+
+    /*
+     * Replacement leaves stock.
+     *
+     * Guarded update prevents negative
+     * stock if something changed.
+     */
+    let replacement_update =
+        sqlx::query(
+            "
+            UPDATE inventory
+
+            SET
+                quantity_on_hand =
+                    quantity_on_hand - $1,
+
+                updated_at =
+                    CURRENT_TIMESTAMP
+
+            WHERE
+                variant_id = $2
+
+                AND quantity_on_hand
+                    >= $1;
+            ",
+        )
+        .bind(quantity)
+        .bind(replacement_variant_id)
+        .execute(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to deduct replacement stock: {}",
+                error
+            )
+        })?;
+
+    if replacement_update
+        .rows_affected()
+        != 1
+    {
+        return Err(format!(
+            "Stock changed while processing the exchange. Please review {} and try again.",
+            replacement_sku
+        ));
+    }
+
+    sqlx::query(
+        "
+        INSERT INTO inventory_movements (
+            variant_id,
+            movement_type,
+            quantity_change,
+
+            reference_type,
+            reference_id,
+
+            note,
+
+            created_by
+        )
+        VALUES (
+            $1,
+            'exchange_out',
+            $2,
+            'exchange',
+            $3,
+            $4,
+            $5
+        );
+        ",
+    )
+    .bind(replacement_variant_id)
+    .bind(-quantity)
+    .bind(exchange_id)
+    .bind(
+        format!(
+            "Exchange replacement for receipt {}",
+            receipt_number
+        )
+    )
+    .bind(processed_by)
+    .execute(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to record replacement inventory movement: {}",
+            error
+        )
+    })?;
+
+    /*
+     * Additional payment if replacement
+     * costs more.
+     */
+    if price_difference_paisa > 0 {
+        let method =
+            final_payment_method
+                .as_ref()
+                .ok_or_else(|| {
+                    "Exchange payment method is missing."
+                        .to_string()
+                })?;
+
+        sqlx::query(
+            "
+            INSERT INTO exchange_payments (
+                exchange_id,
+                method,
+                amount_paisa,
+
+                reference_number,
+
+                cash_received_paisa,
+                change_paisa,
+
+                confirmed_by
+            )
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7
+            );
+            ",
+        )
+        .bind(exchange_id)
+        .bind(method)
+        .bind(price_difference_paisa)
+        .bind(
+            if method == "qr" {
+                clean_reference
+                    .clone()
+            } else {
+                None
+            }
+        )
+        .bind(final_cash_received)
+        .bind(change_paisa)
+        .bind(processed_by)
+        .execute(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to save exchange payment: {}",
+                error
+            )
+        })?;
+    }
+
+    /*
+     * Nothing becomes permanent until
+     * here.
+     */
+    transaction
+        .commit()
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to complete exchange: {}",
+                error
+            )
+        })?;
+
+    Ok(
+        CompleteExchangeResult {
+            exchange_id,
+
+            original_receipt_number:
+                receipt_number,
+
+            returned_product_name,
+            returned_sku,
+            returned_size,
+            returned_color,
+
+            replacement_product_name,
+            replacement_sku,
+            replacement_size,
+            replacement_color,
+
+            quantity,
+
+            price_difference_paisa,
+
+            payment_method:
+                final_payment_method,
+
+            cash_received_paisa:
+                final_cash_received,
+
+            change_paisa,
+        }
+    )
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompleteRefundInput {
+    original_sale_item_id: i64,
+
+    quantity: i64,
+
+    refund_method: String,
+
+    refund_reference: Option<String>,
+
+    reason: String,
+
+    processed_by: i64,
+}
+
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CompleteRefundResult {
+    refund_id: i64,
+
+    original_receipt_number: String,
+
+    product_name: String,
+
+    sku: String,
+
+    size: Option<String>,
+    color: Option<String>,
+
+    quantity: i64,
+
+    gross_amount_paisa: i64,
+
+    discount_refund_paisa: i64,
+
+    tax_refund_paisa: i64,
+
+    refund_amount_paisa: i64,
+
+    refund_method: String,
+
+    sale_status: String,
+}
+
+fn round_ratio(
+    amount: i64,
+    numerator: i64,
+    denominator: i64,
+) -> Result<i64, String> {
+    if denominator <= 0 {
+        return Err(
+            "Invalid refund calculation."
+                .to_string(),
+        );
+    }
+
+    let amount =
+        i128::from(amount);
+
+    let numerator =
+        i128::from(numerator);
+
+    let denominator =
+        i128::from(denominator);
+
+    let result =
+        (
+            amount
+            * numerator
+            + denominator / 2
+        )
+        / denominator;
+
+    i64::try_from(result)
+        .map_err(|_| {
+            "Refund calculation is too large."
+                .to_string()
+        })
+}
+
+#[tauri::command]
+async fn complete_refund(
+    input: CompleteRefundInput,
+    db_instances: State<'_, DbInstances>,
+) -> Result<CompleteRefundResult, String> {
+    let CompleteRefundInput {
+        original_sale_item_id,
+        quantity,
+        refund_method,
+        refund_reference,
+        reason,
+        processed_by,
+    } = input;
+
+    if quantity <= 0 {
+        return Err(
+            "Refund quantity must be greater than zero."
+                .to_string(),
+        );
+    }
+
+    let method =
+        refund_method
+            .trim()
+            .to_lowercase();
+
+    if method != "cash"
+        && method != "qr"
+    {
+        return Err(
+            "Refund method must be cash or QR."
+                .to_string(),
+        );
+    }
+
+    let clean_reference =
+        clean_optional(
+            refund_reference
+        );
+
+    let clean_reason =
+        reason.trim().to_string();
+
+    let instances =
+        db_instances.0.read().await;
+
+    let database = instances
+        .get("sqlite:pos_inventory.db")
+        .ok_or_else(|| {
+            "Project S database is not loaded."
+                .to_string()
+        })?;
+
+    #[allow(unreachable_patterns)]
+    let pool = match database {
+        DbPool::Sqlite(pool) => pool,
+
+        _ => {
+            return Err(
+                "Project S requires SQLite."
+                    .to_string(),
+            );
+        }
+    };
+
+    let mut transaction =
+        pool.begin()
+            .await
+            .map_err(|error| {
+                format!(
+                    "Could not start refund transaction: {}",
+                    error
+                )
+            })?;
+
+    /*
+     * Later we'll replace this with
+     * supervisor/admin authorization.
+     */
+    ensure_pos_user(
+        &mut transaction,
+        processed_by,
+    )
+    .await?;
+
+    /*
+     * Load authoritative ORIGINAL
+     * sale information.
+     */
+    let original: Option<(
+        i64,
+        i64,
+
+        String,
+        String,
+
+        Option<String>,
+        Option<String>,
+
+        i64,
+        i64,
+        i64,
+
+        i64,
+        i64,
+        i64,
+        i64,
+
+        String,
+        String,
+    )> = sqlx::query_as(
+        "
+        SELECT
+            si.sale_id,
+            si.variant_id,
+
+            si.product_name,
+            si.sku,
+
+            si.size,
+            si.color,
+
+            si.quantity,
+            si.unit_price_paisa,
+            si.line_total_paisa,
+
+            s.subtotal_paisa,
+            s.discount_paisa,
+            s.tax_paisa,
+            s.total_paisa,
+
+            s.receipt_number,
+            s.status
+
+        FROM sale_items si
+
+        INNER JOIN sales s
+            ON s.id = si.sale_id
+
+        WHERE
+            si.id = $1
+
+            AND s.status IN (
+                'completed',
+                'partially_refunded'
+            )
+
+        LIMIT 1;
+        ",
+    )
+    .bind(original_sale_item_id)
+    .fetch_optional(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to load original sale item: {}",
+            error
+        )
+    })?;
+
+    let (
+        sale_id,
+        variant_id,
+
+        product_name,
+        sku,
+
+        size,
+        color,
+
+        original_quantity,
+        unit_price_paisa,
+        line_total_paisa,
+
+        sale_subtotal_paisa,
+        sale_discount_paisa,
+        sale_tax_paisa,
+        _sale_total_paisa,
+
+        receipt_number,
+        _sale_status,
+    ) = original.ok_or_else(|| {
+        "This sale item is not available for refund."
+            .to_string()
+    })?;
+
+    /*
+     * Previous refunds.
+     */
+    let already_refunded: i64 =
+        sqlx::query_scalar(
+            "
+            SELECT
+                COALESCE(
+                    SUM(
+                        ri.quantity
+                    ),
+                    0
+                )
+
+            FROM refund_items ri
+
+            INNER JOIN refunds r
+                ON r.id =
+                    ri.refund_id
+
+            WHERE
+                ri.original_sale_item_id
+                    = $1
+
+                AND r.status =
+                    'completed';
+            ",
+        )
+        .bind(original_sale_item_id)
+        .fetch_one(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to verify previous refunds: {}",
+                error
+            )
+        })?;
+
+    /*
+     * Previous exchanges also consume
+     * original refundable quantity.
+     */
+    let already_exchanged: i64 =
+        sqlx::query_scalar(
+            "
+            SELECT
+                COALESCE(
+                    SUM(
+                        ei.quantity
+                    ),
+                    0
+                )
+
+            FROM exchange_items ei
+
+            INNER JOIN exchanges e
+                ON e.id =
+                    ei.exchange_id
+
+            WHERE
+                ei.original_sale_item_id
+                    = $1
+
+                AND e.status =
+                    'completed';
+            ",
+        )
+        .bind(original_sale_item_id)
+        .fetch_one(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to verify exchanges: {}",
+                error
+            )
+        })?;
+
+    let refundable_quantity =
+        original_quantity
+            .checked_sub(
+                already_refunded
+            )
+            .and_then(
+                |remaining| {
+                    remaining.checked_sub(
+                        already_exchanged
+                    )
+                },
+            )
+            .ok_or_else(|| {
+                "Invalid return history."
+                    .to_string()
+            })?;
+
+    if quantity >
+        refundable_quantity
+    {
+        return Err(format!(
+            "Only {} unit(s) remain refundable.",
+            refundable_quantity
+        ));
+    }
+
+    /*
+     * Allocate the ORIGINAL sale-level
+     * discount proportionally to this
+     * line item.
+     */
+    let full_line_discount =
+        if sale_subtotal_paisa > 0 {
+            round_ratio(
+                sale_discount_paisa,
+                line_total_paisa,
+                sale_subtotal_paisa,
+            )?
+        } else {
+            0
+        };
+
+    let total_taxable_paisa =
+        sale_subtotal_paisa
+            .checked_sub(
+                sale_discount_paisa
+            )
+            .ok_or_else(|| {
+                "Invalid original sale totals."
+                    .to_string()
+            })?;
+
+    let line_taxable_paisa =
+        line_total_paisa
+            .checked_sub(
+                full_line_discount
+            )
+            .ok_or_else(|| {
+                "Invalid original item totals."
+                    .to_string()
+            })?;
+
+    let full_line_tax =
+        if total_taxable_paisa > 0 {
+            round_ratio(
+                sale_tax_paisa,
+                line_taxable_paisa,
+                total_taxable_paisa,
+            )?
+        } else {
+            0
+        };
+
+    /*
+     * Cumulative allocation avoids
+     * rounding problems when quantity 2
+     * is refunded as two separate
+     * quantity-1 refunds.
+     */
+    let refund_before =
+        already_refunded;
+
+    let refund_after =
+        already_refunded
+            .checked_add(quantity)
+            .ok_or_else(|| {
+                "Invalid refund quantity."
+                    .to_string()
+            })?;
+
+    let discount_before =
+        round_ratio(
+            full_line_discount,
+            refund_before,
+            original_quantity,
+        )?;
+
+    let discount_after =
+        round_ratio(
+            full_line_discount,
+            refund_after,
+            original_quantity,
+        )?;
+
+    let discount_refund_paisa =
+        discount_after
+            - discount_before;
+
+    let tax_before =
+        round_ratio(
+            full_line_tax,
+            refund_before,
+            original_quantity,
+        )?;
+
+    let tax_after =
+        round_ratio(
+            full_line_tax,
+            refund_after,
+            original_quantity,
+        )?;
+
+    let tax_refund_paisa =
+        tax_after
+            - tax_before;
+
+    let gross_amount_paisa =
+        unit_price_paisa
+            .checked_mul(quantity)
+            .ok_or_else(|| {
+                "Refund amount is too large."
+                    .to_string()
+            })?;
+
+    let refund_amount_paisa =
+        gross_amount_paisa
+            .checked_sub(
+                discount_refund_paisa
+            )
+            .and_then(
+                |amount| {
+                    amount.checked_add(
+                        tax_refund_paisa
+                    )
+                },
+            )
+            .ok_or_else(|| {
+                "Invalid refund amount."
+                    .to_string()
+            })?;
+
+    /*
+     * QR reference follows our existing
+     * store setting.
+     */
+    if method == "qr" {
+        let require_reference:
+            Option<String> =
+            sqlx::query_scalar(
+                "
+                SELECT value
+                FROM settings
+
+                WHERE key =
+                    'require_qr_reference'
+
+                LIMIT 1;
+                ",
+            )
+            .fetch_optional(
+                &mut *transaction
+            )
+            .await
+            .map_err(|error| {
+                format!(
+                    "Failed to load QR settings: {}",
+                    error
+                )
+            })?;
+
+        if require_reference
+            .as_deref()
+            == Some("true")
+            && clean_reference
+                .is_none()
+        {
+            return Err(
+                "QR refund reference is required."
+                    .to_string(),
+            );
+        }
+    }
+
+    /*
+     * Create refund record.
+     *
+     * approved_by remains NULL until
+     * our supervisor authorization
+     * system is introduced.
+     */
+    let refund_result =
+        sqlx::query(
+            "
+            INSERT INTO refunds (
+                original_sale_id,
+                processed_by,
+                approved_by,
+
+                total_refund_paisa,
+
+                reason,
+
+                status
+            )
+            VALUES (
+                $1,
+                $2,
+                NULL,
+                $3,
+                $4,
+                'completed'
+            );
+            ",
+        )
+        .bind(sale_id)
+        .bind(processed_by)
+        .bind(refund_amount_paisa)
+        .bind(
+            if clean_reason.is_empty() {
+                None
+            } else {
+                Some(clean_reason)
+            }
+        )
+        .execute(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to create refund: {}",
+                error
+            )
+        })?;
+
+    let refund_id =
+        refund_result
+            .last_insert_rowid();
+
+    /*
+     * Snapshot refunded item.
+     */
+    sqlx::query(
+        "
+        INSERT INTO refund_items (
+            refund_id,
+            original_sale_item_id,
+
+            variant_id,
+
+            quantity,
+
+            product_name,
+            sku,
+
+            size,
+            color,
+
+            unit_price_paisa,
+
+            gross_amount_paisa,
+
+            discount_refund_paisa,
+
+            tax_refund_paisa,
+
+            refund_amount_paisa,
+
+            restocked
+        )
+        VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            $11,
+            $12,
+            $13,
+            1
+        );
+        ",
+    )
+    .bind(refund_id)
+    .bind(original_sale_item_id)
+    .bind(variant_id)
+    .bind(quantity)
+    .bind(&product_name)
+    .bind(&sku)
+    .bind(&size)
+    .bind(&color)
+    .bind(unit_price_paisa)
+    .bind(gross_amount_paisa)
+    .bind(discount_refund_paisa)
+    .bind(tax_refund_paisa)
+    .bind(refund_amount_paisa)
+    .execute(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to save refund item: {}",
+            error
+        )
+    })?;
+
+    /*
+     * Money going back to customer.
+     */
+    sqlx::query(
+        "
+        INSERT INTO refund_payments (
+            refund_id,
+
+            method,
+
+            amount_paisa,
+
+            reference_number,
+
+            processed_by
+        )
+        VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5
+        );
+        ",
+    )
+    .bind(refund_id)
+    .bind(&method)
+    .bind(refund_amount_paisa)
+    .bind(
+        if method == "qr" {
+            clean_reference
+                .clone()
+        } else {
+            None
+        }
+    )
+    .bind(processed_by)
+    .execute(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to save refund payment: {}",
+            error
+        )
+    })?;
+
+    /*
+     * Returned merchandise comes back
+     * into inventory.
+     */
+    let stock_update =
+        sqlx::query(
+            "
+            UPDATE inventory
+
+            SET
+                quantity_on_hand =
+                    quantity_on_hand + $1,
+
+                updated_at =
+                    CURRENT_TIMESTAMP
+
+            WHERE
+                variant_id = $2;
+            ",
+        )
+        .bind(quantity)
+        .bind(variant_id)
+        .execute(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to return stock: {}",
+                error
+            )
+        })?;
+
+    if stock_update
+        .rows_affected()
+        != 1
+    {
+        return Err(
+            "Returned item inventory could not be updated."
+                .to_string(),
+        );
+    }
+
+    /*
+     * Inventory audit trail.
+     */
+    sqlx::query(
+        "
+        INSERT INTO inventory_movements (
+            variant_id,
+
+            movement_type,
+
+            quantity_change,
+
+            reference_type,
+
+            reference_id,
+
+            note,
+
+            created_by
+        )
+        VALUES (
+            $1,
+            'return',
+            $2,
+            'refund',
+            $3,
+            $4,
+            $5
+        );
+        ",
+    )
+    .bind(variant_id)
+    .bind(quantity)
+    .bind(refund_id)
+    .bind(
+        format!(
+            "Refund return from receipt {}",
+            receipt_number
+        )
+    )
+    .bind(processed_by)
+    .execute(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to record refund inventory movement: {}",
+            error
+        )
+    })?;
+
+    /*
+     * Determine whether the entire
+     * ORIGINAL sale has now been
+     * refunded.
+     */
+    let sold_units: i64 =
+        sqlx::query_scalar(
+            "
+            SELECT
+                COALESCE(
+                    SUM(quantity),
+                    0
+                )
+
+            FROM sale_items
+
+            WHERE sale_id = $1;
+            ",
+        )
+        .bind(sale_id)
+        .fetch_one(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to calculate sale quantity: {}",
+                error
+            )
+        })?;
+
+    let refunded_units: i64 =
+        sqlx::query_scalar(
+            "
+            SELECT
+                COALESCE(
+                    SUM(
+                        ri.quantity
+                    ),
+                    0
+                )
+
+            FROM refund_items ri
+
+            INNER JOIN refunds r
+                ON r.id =
+                    ri.refund_id
+
+            WHERE
+                r.original_sale_id =
+                    $1
+
+                AND r.status =
+                    'completed';
+            ",
+        )
+        .bind(sale_id)
+        .fetch_one(
+            &mut *transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to calculate refunded quantity: {}",
+                error
+            )
+        })?;
+
+    let sale_status =
+        if refunded_units
+            >= sold_units
+        {
+            "refunded"
+        } else {
+            "partially_refunded"
+        };
+
+    sqlx::query(
+        "
+        UPDATE sales
+
+        SET status = $1
+
+        WHERE id = $2;
+        ",
+    )
+    .bind(sale_status)
+    .bind(sale_id)
+    .execute(
+        &mut *transaction
+    )
+    .await
+    .map_err(|error| {
+        format!(
+            "Failed to update sale status: {}",
+            error
+        )
+    })?;
+
+    /*
+     * Commit EVERYTHING together.
+     */
+    transaction
+        .commit()
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to complete refund: {}",
+                error
+            )
+        })?;
+
+    Ok(
+        CompleteRefundResult {
+            refund_id,
+
+            original_receipt_number:
+                receipt_number,
+
+            product_name,
+            sku,
+
+            size,
+            color,
+
+            quantity,
+
+            gross_amount_paisa,
+
+            discount_refund_paisa,
+
+            tax_refund_paisa,
+
+            refund_amount_paisa,
+
+            refund_method:
+                method,
+
+            sale_status:
+                sale_status
+                    .to_string(),
+        }
+    )
+}
 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -2015,6 +3868,22 @@ pub fn run() {
             description: "add_cash_payment_details",
             sql: include_str!(
                 "../migrations/002_cash_payment_details.sql"
+            ),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "add_exchanges",
+            sql: include_str!(
+                "../migrations/003_exchanges.sql"
+            ),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "add_refunds",
+            sql: include_str!(
+                "../migrations/004_refunds.sql"
             ),
             kind: MigrationKind::Up,
         },
@@ -2039,7 +3908,9 @@ pub fn run() {
             complete_sale,
             create_cashier,
             set_cashier_active,
-            save_settings
+            save_settings,
+            complete_exchange,
+            complete_refund
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

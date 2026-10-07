@@ -214,17 +214,17 @@ export default function AdminDashboard({
       <div className="dashboard-kpis">
         <div className="dashboard-kpi primary">
           <span>
-            Today's Revenue
+            Today's Net Sales
           </span>
 
           <strong>
             {formatMoney(
-              metrics.todayRevenuePaisa
+              metrics.netSalesPaisa
             )}
           </strong>
 
           <small>
-            Completed sales today
+            Sales + exchanges − refunds
           </small>
         </div>
 
@@ -274,6 +274,46 @@ export default function AdminDashboard({
           <small>
             Average transaction
           </small>
+        </div>
+      </div>
+
+      <div className="dashboard-accounting-summary">
+        <div>
+          <span>
+            Gross Sales
+          </span>
+
+          <strong>
+            {formatMoney(
+              metrics.grossSalesPaisa
+            )}
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            Exchange Upsells
+          </span>
+
+          <strong>
+            +{" "}
+            {formatMoney(
+              metrics.exchangeRevenuePaisa
+            )}
+          </strong>
+        </div>
+
+        <div className="refund">
+          <span>
+            Refunds
+          </span>
+
+          <strong>
+            −{" "}
+            {formatMoney(
+              metrics.refundPaisa
+            )}
+          </strong>
         </div>
       </div>
 

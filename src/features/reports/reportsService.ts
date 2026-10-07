@@ -3,13 +3,27 @@ import {
 } from "../../lib/database";
 
 export interface ReportMetrics {
-  revenuePaisa: number;
+  grossSalesPaisa: number;
+
+  exchangeRevenuePaisa: number;
+
+  refundsPaisa: number;
+
+  netSalesPaisa: number;
+
   transactions: number;
+
   unitsSold: number;
+
+  unitsReturned: number;
+
+  netUnits: number;
+
   averageSalePaisa: number;
 
-  discountPaisa: number;
-  taxPaisa: number;
+  netDiscountPaisa: number;
+
+  netTaxPaisa: number;
 
   estimatedGrossProfitPaisa:
     number;
@@ -18,15 +32,27 @@ export interface ReportMetrics {
 export interface PaymentBreakdown {
   method: "cash" | "qr";
 
-  transactions: number;
+  paymentTransactions: number;
 
-  amountPaisa: number;
+  refundTransactions: number;
+
+  collectedPaisa: number;
+
+  refundedPaisa: number;
+
+  netAmountPaisa: number;
 }
 
 export interface DailySales {
   saleDate: string;
 
-  revenuePaisa: number;
+  grossSalesPaisa: number;
+
+  exchangeRevenuePaisa: number;
+
+  refundsPaisa: number;
+
+  netSalesPaisa: number;
 
   transactions: number;
 }
@@ -89,215 +115,713 @@ export async function getReports(
      * Summary metrics
      */
     db.select<ReportMetrics[]>(
-      `
-        SELECT
+        `
+            WITH
 
-          COALESCE(
-            SUM(
-              s.total_paisa
-            ),
-            0
-          ) AS revenuePaisa,
-
-          COUNT(*)
-            AS transactions,
-
-          COALESCE(
-            SUM(
-              (
-                SELECT
-                  COALESCE(
-                    SUM(
-                      si.quantity
-                    ),
-                    0
-                  )
-
-                FROM sale_items si
-
-                WHERE
-                  si.sale_id =
-                    s.id
-              )
-            ),
-            0
-          ) AS unitsSold,
-
-          COALESCE(
-            CAST(
-              AVG(
-                s.total_paisa
-              )
-              AS INTEGER
-            ),
-            0
-          ) AS averageSalePaisa,
-
-          COALESCE(
-            SUM(
-              s.discount_paisa
-            ),
-            0
-          ) AS discountPaisa,
-
-          COALESCE(
-            SUM(
-              s.tax_paisa
-            ),
-            0
-          ) AS taxPaisa,
-
-          COALESCE(
-            SUM(
-              (
-                s.subtotal_paisa
-                -
-                s.discount_paisa
-              )
-              -
-              COALESCE(
-                (
-                  SELECT
-                    SUM(
-                      si.quantity
-                      *
-                      pv.cost_price_paisa
-                    )
-
-                  FROM sale_items si
-
-                  INNER JOIN
-                    product_variants pv
-                    ON pv.id =
-                      si.variant_id
-
-                  WHERE
-                    si.sale_id =
-                      s.id
+            sale_activity AS (
+            SELECT
+                COALESCE(
+                SUM(
+                    s.total_paisa
                 ),
                 0
-              )
+                ) AS grossSalesPaisa,
+
+                COUNT(*)
+                AS transactions,
+
+                COALESCE(
+                SUM(
+                    s.discount_paisa
+                ),
+                0
+                ) AS discountPaisa,
+
+                COALESCE(
+                SUM(
+                    s.tax_paisa
+                ),
+                0
+                ) AS taxPaisa,
+
+                COALESCE(
+                SUM(
+                    s.subtotal_paisa
+                    -
+                    s.discount_paisa
+                ),
+                0
+                ) AS merchandiseRevenuePaisa
+
+            FROM sales s
+
+            WHERE
+                s.status IN (
+                'completed',
+                'partially_refunded',
+                'refunded'
+                )
+
+                AND date(
+                s.created_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
             ),
-            0
-          )
-            AS estimatedGrossProfitPaisa
 
-        FROM sales s
+            sold_items AS (
+            SELECT
+                COALESCE(
+                SUM(
+                    si.quantity
+                ),
+                0
+                ) AS unitsSold,
 
-        WHERE
-          s.status =
-            'completed'
+                COALESCE(
+                SUM(
+                    si.quantity
+                    *
+                    pv.cost_price_paisa
+                ),
+                0
+                ) AS costOfGoodsPaisa
 
-          AND date(
-            s.created_at,
-            'localtime'
-          )
-          BETWEEN $1 AND $2;
-      `,
-      [
-        startDate,
-        endDate,
-      ]
-    ),
+            FROM sale_items si
+
+            INNER JOIN sales s
+                ON s.id =
+                si.sale_id
+
+            INNER JOIN
+                product_variants pv
+                ON pv.id =
+                si.variant_id
+
+            WHERE
+                s.status IN (
+                'completed',
+                'partially_refunded',
+                'refunded'
+                )
+
+                AND date(
+                s.created_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+            ),
+
+            refund_activity AS (
+            SELECT
+                COALESCE(
+                SUM(
+                    r.total_refund_paisa
+                ),
+                0
+                ) AS refundsPaisa
+
+            FROM refunds r
+
+            WHERE
+                r.status =
+                'completed'
+
+                AND date(
+                r.created_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+            ),
+
+            refunded_items AS (
+            SELECT
+                COALESCE(
+                SUM(
+                    ri.quantity
+                ),
+                0
+                ) AS unitsReturned,
+
+                COALESCE(
+                SUM(
+                    ri.discount_refund_paisa
+                ),
+                0
+                ) AS discountReturnedPaisa,
+
+                COALESCE(
+                SUM(
+                    ri.tax_refund_paisa
+                ),
+                0
+                ) AS taxReturnedPaisa,
+
+                COALESCE(
+                SUM(
+                    ri.refund_amount_paisa
+                    -
+                    ri.tax_refund_paisa
+                ),
+                0
+                ) AS merchandiseRefundedPaisa,
+
+                COALESCE(
+                SUM(
+                    ri.quantity
+                    *
+                    pv.cost_price_paisa
+                ),
+                0
+                ) AS returnedCostPaisa
+
+            FROM refund_items ri
+
+            INNER JOIN refunds r
+                ON r.id =
+                ri.refund_id
+
+            INNER JOIN
+                product_variants pv
+                ON pv.id =
+                ri.variant_id
+
+            WHERE
+                r.status =
+                'completed'
+
+                AND date(
+                r.created_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+            ),
+
+            exchange_activity AS (
+            SELECT
+                COALESCE(
+                SUM(
+                    ep.amount_paisa
+                ),
+                0
+                ) AS exchangeRevenuePaisa
+
+            FROM exchange_payments ep
+
+            INNER JOIN exchanges e
+                ON e.id =
+                ep.exchange_id
+
+            WHERE
+                e.status =
+                'completed'
+
+                AND date(
+                ep.confirmed_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+            ),
+
+            exchange_profit AS (
+            SELECT
+                COALESCE(
+                SUM(
+                    (
+                    ei.replacement_unit_price_paisa
+                    -
+                    ei.original_unit_price_paisa
+                    )
+                    *
+                    ei.quantity
+
+                    +
+
+                    (
+                    returned_variant.cost_price_paisa
+                    *
+                    ei.quantity
+                    )
+
+                    -
+
+                    (
+                    replacement_variant.cost_price_paisa
+                    *
+                    ei.quantity
+                    )
+                ),
+                0
+                ) AS exchangeProfitAdjustmentPaisa
+
+            FROM exchange_items ei
+
+            INNER JOIN exchanges e
+                ON e.id =
+                ei.exchange_id
+
+            INNER JOIN
+                product_variants
+                returned_variant
+                ON returned_variant.id =
+                ei.returned_variant_id
+
+            INNER JOIN
+                product_variants
+                replacement_variant
+                ON replacement_variant.id =
+                ei.replacement_variant_id
+
+            WHERE
+                e.status =
+                'completed'
+
+                AND date(
+                e.created_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+            )
+
+            SELECT
+            sa.grossSalesPaisa,
+
+            ea.exchangeRevenuePaisa,
+
+            ra.refundsPaisa,
+
+            (
+                sa.grossSalesPaisa
+                +
+                ea.exchangeRevenuePaisa
+                -
+                ra.refundsPaisa
+            ) AS netSalesPaisa,
+
+            sa.transactions,
+
+            si.unitsSold,
+
+            ri.unitsReturned,
+
+            (
+                si.unitsSold
+                -
+                ri.unitsReturned
+            ) AS netUnits,
+
+            CASE
+                WHEN
+                sa.transactions > 0
+                THEN
+                CAST(
+                    (
+                    sa.grossSalesPaisa
+                    +
+                    ea.exchangeRevenuePaisa
+                    -
+                    ra.refundsPaisa
+                    )
+                    /
+                    sa.transactions
+
+                    AS INTEGER
+                )
+
+                ELSE 0
+            END
+                AS averageSalePaisa,
+
+            (
+                sa.discountPaisa
+                -
+                ri.discountReturnedPaisa
+            ) AS netDiscountPaisa,
+
+            (
+                sa.taxPaisa
+                -
+                ri.taxReturnedPaisa
+            ) AS netTaxPaisa,
+
+            (
+                (
+                sa.merchandiseRevenuePaisa
+                -
+                si.costOfGoodsPaisa
+                )
+
+                -
+
+                (
+                ri.merchandiseRefundedPaisa
+                -
+                ri.returnedCostPaisa
+                )
+
+                +
+
+                ep.exchangeProfitAdjustmentPaisa
+            )
+                AS estimatedGrossProfitPaisa
+
+            FROM sale_activity sa
+
+            CROSS JOIN sold_items si
+
+            CROSS JOIN refund_activity ra
+
+            CROSS JOIN refunded_items ri
+
+            CROSS JOIN exchange_activity ea
+
+            CROSS JOIN exchange_profit ep;
+        `,
+        [
+            startDate,
+            endDate,
+        ]
+        ),
 
     /*
      * Cash vs QR
      */
     db.select<
-      PaymentBreakdown[]
-    >(
-      `
-        SELECT
-          p.method,
+        PaymentBreakdown[]
+        >(
+        `
+            WITH payment_activity AS (
 
-          COUNT(
-            DISTINCT s.id
-          ) AS transactions,
+            SELECT
+                p.method,
 
-          COALESCE(
+                COUNT(*)
+                AS paymentTransactions,
+
+                0
+                AS refundTransactions,
+
+                COALESCE(
+                SUM(
+                    p.amount_paisa
+                ),
+                0
+                ) AS collectedPaisa,
+
+                0
+                AS refundedPaisa
+
+            FROM payments p
+
+            INNER JOIN sales s
+                ON s.id =
+                p.sale_id
+
+            WHERE
+                s.status IN (
+                'completed',
+                'partially_refunded',
+                'refunded'
+                )
+
+                AND date(
+                p.confirmed_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+
+            GROUP BY
+                p.method
+
+
+            UNION ALL
+
+
+            SELECT
+                ep.method,
+
+                COUNT(*),
+
+                0,
+
+                COALESCE(
+                SUM(
+                    ep.amount_paisa
+                ),
+                0
+                ),
+
+                0
+
+            FROM exchange_payments ep
+
+            INNER JOIN exchanges e
+                ON e.id =
+                ep.exchange_id
+
+            WHERE
+                e.status =
+                'completed'
+
+                AND date(
+                ep.confirmed_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+
+            GROUP BY
+                ep.method
+
+
+            UNION ALL
+
+
+            SELECT
+                rp.method,
+
+                0,
+
+                COUNT(*),
+
+                0,
+
+                COALESCE(
+                SUM(
+                    rp.amount_paisa
+                ),
+                0
+                )
+
+            FROM refund_payments rp
+
+            INNER JOIN refunds r
+                ON r.id =
+                rp.refund_id
+
+            WHERE
+                r.status =
+                'completed'
+
+                AND date(
+                rp.processed_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+
+            GROUP BY
+                rp.method
+            )
+
+            SELECT
+            method,
+
             SUM(
-              p.amount_paisa
-            ),
-            0
-          ) AS amountPaisa
+                paymentTransactions
+            ) AS paymentTransactions,
 
-        FROM payments p
+            SUM(
+                refundTransactions
+            ) AS refundTransactions,
 
-        INNER JOIN sales s
-          ON s.id =
-            p.sale_id
+            SUM(
+                collectedPaisa
+            ) AS collectedPaisa,
 
-        WHERE
-          s.status =
-            'completed'
+            SUM(
+                refundedPaisa
+            ) AS refundedPaisa,
 
-          AND date(
-            s.created_at,
-            'localtime'
-          )
-          BETWEEN $1 AND $2
+            (
+                SUM(
+                collectedPaisa
+                )
+                -
+                SUM(
+                refundedPaisa
+                )
+            ) AS netAmountPaisa
 
-        GROUP BY
-          p.method
+            FROM payment_activity
 
-        ORDER BY
-          amountPaisa DESC;
-      `,
-      [
-        startDate,
-        endDate,
-      ]
-    ),
+            GROUP BY method
+
+            ORDER BY
+            netAmountPaisa DESC;
+        `,
+        [
+            startDate,
+            endDate,
+        ]
+        ),
 
     /*
      * Daily revenue
      */
     db.select<
-      DailySales[]
-    >(
-      `
-        SELECT
-          date(
-            s.created_at,
-            'localtime'
-          ) AS saleDate,
+        DailySales[]
+        >(
+        `
+            WITH daily_activity AS (
 
-          COALESCE(
+            SELECT
+                date(
+                s.created_at,
+                'localtime'
+                ) AS saleDate,
+
+                SUM(
+                s.total_paisa
+                ) AS grossSalesPaisa,
+
+                0 AS exchangeRevenuePaisa,
+
+                0 AS refundsPaisa,
+
+                COUNT(*)
+                AS transactions
+
+            FROM sales s
+
+            WHERE
+                s.status IN (
+                'completed',
+                'partially_refunded',
+                'refunded'
+                )
+
+                AND date(
+                s.created_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+
+            GROUP BY saleDate
+
+
+            UNION ALL
+
+
+            SELECT
+                date(
+                ep.confirmed_at,
+                'localtime'
+                ),
+
+                0,
+
+                SUM(
+                ep.amount_paisa
+                ),
+
+                0,
+
+                0
+
+            FROM exchange_payments ep
+
+            INNER JOIN exchanges e
+                ON e.id =
+                ep.exchange_id
+
+            WHERE
+                e.status =
+                'completed'
+
+                AND date(
+                ep.confirmed_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+
+            GROUP BY
+                date(
+                ep.confirmed_at,
+                'localtime'
+                )
+
+
+            UNION ALL
+
+
+            SELECT
+                date(
+                r.created_at,
+                'localtime'
+                ),
+
+                0,
+
+                0,
+
+                SUM(
+                r.total_refund_paisa
+                ),
+
+                0
+
+            FROM refunds r
+
+            WHERE
+                r.status =
+                'completed'
+
+                AND date(
+                r.created_at,
+                'localtime'
+                )
+                BETWEEN $1 AND $2
+
+            GROUP BY
+                date(
+                r.created_at,
+                'localtime'
+                )
+            )
+
+            SELECT
+            saleDate,
+
             SUM(
-              s.total_paisa
-            ),
-            0
-          ) AS revenuePaisa,
+                grossSalesPaisa
+            ) AS grossSalesPaisa,
 
-          COUNT(*)
-            AS transactions
+            SUM(
+                exchangeRevenuePaisa
+            ) AS exchangeRevenuePaisa,
 
-        FROM sales s
+            SUM(
+                refundsPaisa
+            ) AS refundsPaisa,
 
-        WHERE
-          s.status =
-            'completed'
+            (
+                SUM(
+                grossSalesPaisa
+                )
+                +
+                SUM(
+                exchangeRevenuePaisa
+                )
+                -
+                SUM(
+                refundsPaisa
+                )
+            ) AS netSalesPaisa,
 
-          AND date(
-            s.created_at,
-            'localtime'
-          )
-          BETWEEN $1 AND $2
+            SUM(
+                transactions
+            ) AS transactions
 
-        GROUP BY
-          date(
-            s.created_at,
-            'localtime'
-          )
+            FROM daily_activity
 
-        ORDER BY
-          saleDate ASC;
-      `,
-      [
-        startDate,
-        endDate,
-      ]
-    ),
+            GROUP BY saleDate
+
+            ORDER BY saleDate ASC;
+        `,
+        [
+            startDate,
+            endDate,
+        ]
+        ),
 
     /*
      * Best-selling products
@@ -457,76 +981,131 @@ export async function getReports(
 
   return {
     metrics: {
-      revenuePaisa:
-        Number(
-          metrics.revenuePaisa
-        ),
+        grossSalesPaisa:
+            Number(
+            metrics.grossSalesPaisa
+            ),
 
-      transactions:
-        Number(
-          metrics.transactions
-        ),
+        exchangeRevenuePaisa:
+            Number(
+            metrics.exchangeRevenuePaisa
+            ),
 
-      unitsSold:
-        Number(
-          metrics.unitsSold
-        ),
+        refundsPaisa:
+            Number(
+            metrics.refundsPaisa
+            ),
 
-      averageSalePaisa:
-        Number(
-          metrics.averageSalePaisa
-        ),
+        netSalesPaisa:
+            Number(
+            metrics.netSalesPaisa
+            ),
 
-      discountPaisa:
-        Number(
-          metrics.discountPaisa
-        ),
+        transactions:
+            Number(
+            metrics.transactions
+            ),
 
-      taxPaisa:
-        Number(
-          metrics.taxPaisa
-        ),
+        unitsSold:
+            Number(
+            metrics.unitsSold
+            ),
 
-      estimatedGrossProfitPaisa:
-        Number(
-          metrics
-            .estimatedGrossProfitPaisa
-        ),
-    },
+        unitsReturned:
+            Number(
+            metrics.unitsReturned
+            ),
+
+        netUnits:
+            Number(
+            metrics.netUnits
+            ),
+
+        averageSalePaisa:
+            Number(
+            metrics.averageSalePaisa
+            ),
+
+        netDiscountPaisa:
+            Number(
+            metrics.netDiscountPaisa
+            ),
+
+        netTaxPaisa:
+            Number(
+            metrics.netTaxPaisa
+            ),
+
+        estimatedGrossProfitPaisa:
+            Number(
+            metrics
+                .estimatedGrossProfitPaisa
+            ),
+        },
 
     paymentBreakdown:
-      paymentRows.map(
-        (row) => ({
-          ...row,
+        paymentRows.map(
+            (row) => ({
+            ...row,
 
-          transactions:
-            Number(
-              row.transactions
-            ),
+            paymentTransactions:
+                Number(
+                row.paymentTransactions
+                ),
 
-          amountPaisa:
-            Number(
-              row.amountPaisa
-            ),
-        })
-      ),
+            refundTransactions:
+                Number(
+                row.refundTransactions
+                ),
+
+            collectedPaisa:
+                Number(
+                row.collectedPaisa
+                ),
+
+            refundedPaisa:
+                Number(
+                row.refundedPaisa
+                ),
+
+            netAmountPaisa:
+                Number(
+                row.netAmountPaisa
+                ),
+            })
+        ),
 
     dailySales:
-      dailyRows.map(
-        (row) => ({
-          ...row,
+        dailyRows.map(
+            (row) => ({
+            ...row,
 
-          revenuePaisa:
-            Number(
-              row.revenuePaisa
-            ),
+            grossSalesPaisa:
+                Number(
+                row.grossSalesPaisa
+                ),
 
-          transactions:
-            Number(
-              row.transactions
-            ),
-        })
-      ),
+            exchangeRevenuePaisa:
+                Number(
+                row.exchangeRevenuePaisa
+                ),
+
+            refundsPaisa:
+                Number(
+                row.refundsPaisa
+                ),
+
+            netSalesPaisa:
+                Number(
+                row.netSalesPaisa
+                ),
+
+            transactions:
+                Number(
+                row.transactions
+                ),
+            })
+        ),
 
     topProducts:
       productRows.map(

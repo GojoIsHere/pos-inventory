@@ -11,6 +11,14 @@ import {
 import SaleDetailsModal from "./SaleDetailsModal";
 
 import "./sales.css";
+import type {
+  AuthUser,
+} from "../../types/auth";
+
+interface SalesPageProps {
+  user: AuthUser;
+}
+
 
 function formatMoney(
   paisa: number
@@ -51,7 +59,9 @@ function formatDateTime(
   return date.toLocaleString();
 }
 
-export default function SalesPage() {
+export default function SalesPage({
+  user,
+}: SalesPageProps) {
   const [
     sales,
     setSales,
@@ -364,6 +374,7 @@ export default function SalesPage() {
           saleId={
             selectedSaleId
           }
+          user={user}
           onClose={() =>
             setSelectedSaleId(
               null

@@ -13,8 +13,18 @@ import {
   type AppSettings,
 } from "../settings/settingsService";
 
+import ExchangeModal from "../exchanges/ExchangeModal";
+
+import type {
+  AuthUser,
+} from "../../types/auth";
+
+import RefundModal from "../refunds/RefundModal";
+
 interface SaleDetailsModalProps {
   saleId: number;
+
+  user: AuthUser;
 
   onClose: () => void;
 }
@@ -64,6 +74,7 @@ function formatDateTime(
 
 export default function SaleDetailsModal({
   saleId,
+  user,
   onClose,
 }: SaleDetailsModalProps) {
   const [
@@ -89,6 +100,25 @@ export default function SaleDetailsModal({
   ] = useState<
     AppSettings | null
   >(null);
+
+  const [
+    exchangeSaleItemId,
+    setExchangeSaleItemId,
+  ] = useState<
+    number | null
+  >(null);
+
+  const [
+    refundSaleItemId,
+    setRefundSaleItemId,
+  ] = useState<
+    number | null
+  >(null);
+
+  const [
+    reloadKey,
+    setReloadKey,
+  ] = useState(0);
 
   useEffect(() => {
     async function loadSale() {
@@ -126,10 +156,11 @@ export default function SaleDetailsModal({
     }
 
     loadSale();
-  }, [saleId]);
+  }, [saleId,reloadKey,]);
 
   return (
-    <div className="sale-modal-overlay">
+    <>
+      <div className="sale-modal-overlay">
       <section className="sale-details-modal">
         <div className="sale-modal-header">
           <div>
@@ -275,6 +306,39 @@ export default function SaleDetailsModal({
                         )}{" "}
                         each
                       </small>
+                      {(
+                        sale.status ===
+                          "completed"
+                        ||
+                        sale.status ===
+                          "partially_refunded"
+                      ) && (
+                        <div className="receipt-item-actions">
+                          <button
+                            type="button"
+                            className="receipt-exchange-button"
+                            onClick={() =>
+                              setExchangeSaleItemId(
+                                item.id
+                              )
+                            }
+                          >
+                            Exchange
+                          </button>
+
+                          <button
+                            type="button"
+                            className="receipt-refund-button"
+                            onClick={() =>
+                              setRefundSaleItemId(
+                                item.id
+                              )
+                            }
+                          >
+                            Return / Refund
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <span>
@@ -407,5 +471,46 @@ export default function SaleDetailsModal({
         )}
       </section>
     </div>
+    {exchangeSaleItemId !==
+      null && (
+      <ExchangeModal
+        saleItemId={
+          exchangeSaleItemId
+        }
+        user={user}
+        onClose={() => {
+          setExchangeSaleItemId(
+            null
+          );
+
+          setReloadKey(
+            (current) =>
+              current + 1
+          );
+        }}
+      />
+    )}
+    {refundSaleItemId !==
+      null && (
+      <RefundModal
+        saleItemId={
+          refundSaleItemId
+        }
+
+        user={user}
+
+        onClose={() => {
+          setRefundSaleItemId(
+            null
+          );
+
+          setReloadKey(
+            (current) =>
+              current + 1
+          );
+        }}
+      />
+    )}
+    </>
   );
 }

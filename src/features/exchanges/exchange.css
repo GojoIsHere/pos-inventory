@@ -1,0 +1,366 @@
+.exchange-overlay {
+  position: fixed;
+
+  inset: 0;
+
+  z-index: 1200;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  padding: 24px;
+
+  background:
+    rgba(12, 13, 15, 0.66);
+
+  backdrop-filter:
+    blur(4px);
+}
+
+.exchange-modal {
+  width: 100%;
+  max-width: 480px;
+
+  max-height: 90vh;
+
+  overflow-y: auto;
+
+  border: 1px solid #e1e2e4;
+  border-radius: 16px;
+
+  padding: 22px;
+
+  background: white;
+
+  box-shadow:
+    0 30px 90px
+    rgba(0, 0, 0, 0.25);
+}
+
+.exchange-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+
+  margin-bottom: 18px;
+}
+
+.exchange-header h2 {
+  margin: 0;
+
+  font-size: 20px;
+}
+
+.exchange-close {
+  width: 32px;
+  height: 32px;
+
+  border: none;
+  border-radius: 8px;
+
+  background: #f2f2f3;
+  color: #777;
+
+  cursor: pointer;
+
+  font-size: 19px;
+}
+
+.exchange-loading {
+  padding: 55px 20px;
+
+  color: #999;
+
+  text-align: center;
+
+  font-size: 10px;
+}
+
+.exchange-original {
+  display: flex;
+  flex-direction: column;
+
+  border-radius: 10px;
+
+  padding: 14px;
+
+  background: #f6f6f7;
+
+  margin-bottom: 14px;
+}
+
+.exchange-original > span {
+  color: #999;
+
+  font-size: 8px;
+
+  text-transform: uppercase;
+}
+
+.exchange-original > strong {
+  margin-top: 4px;
+
+  font-size: 13px;
+}
+
+.exchange-original > small {
+  margin-top: 3px;
+
+  color: #777;
+
+  font-size: 8px;
+}
+
+.exchange-original > div {
+  display: flex;
+  justify-content: space-between;
+
+  margin-top: 9px;
+
+  color: #777;
+
+  font-size: 8px;
+}
+
+.exchange-field {
+  display: flex;
+  flex-direction: column;
+
+  gap: 5px;
+
+  margin-bottom: 12px;
+}
+
+.exchange-field label {
+  color: #444;
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.exchange-field input,
+.exchange-field select {
+  width: 100%;
+
+  border: 1px solid #d9dadd;
+  border-radius: 8px;
+
+  padding: 10px;
+
+  background: white;
+
+  font: inherit;
+  font-size: 10px;
+
+  outline: none;
+}
+
+.exchange-field input:focus,
+.exchange-field select:focus {
+  border-color: #171717;
+}
+
+.exchange-difference {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  margin-bottom: 13px;
+
+  border-radius: 9px;
+
+  padding: 12px;
+
+  background: #f6f6f7;
+
+  font-size: 9px;
+}
+
+.exchange-difference strong {
+  font-size: 15px;
+}
+
+.exchange-difference strong.negative {
+  color: #a52d2d;
+}
+
+.exchange-warning {
+  margin-bottom: 13px;
+
+  border: 1px solid #ead5ae;
+  border-radius: 8px;
+
+  padding: 10px;
+
+  background: #fffaf0;
+  color: #8a651a;
+
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.exchange-payment-methods {
+  display: grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap: 6px;
+
+  margin-bottom: 12px;
+}
+
+.exchange-payment-methods button {
+  border: 1px solid #d9dadd;
+  border-radius: 8px;
+
+  padding: 9px;
+
+  background: white;
+  color: #666;
+
+  cursor: pointer;
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.exchange-payment-methods button.active {
+  border-color: #171717;
+
+  background: #171717;
+  color: white;
+}
+
+.exchange-actions {
+  display: grid;
+
+  grid-template-columns:
+    100px 1fr;
+
+  gap: 8px;
+
+  margin-top: 18px;
+}
+
+.exchange-cancel,
+.exchange-confirm {
+  min-height: 41px;
+
+  border-radius: 8px;
+
+  cursor: pointer;
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.exchange-cancel {
+  border: 1px solid #d9dadd;
+
+  background: white;
+  color: #555;
+}
+
+.exchange-confirm {
+  border: 1px solid #171717;
+
+  background: #171717;
+  color: white;
+}
+
+.exchange-confirm:disabled,
+.exchange-cancel:disabled {
+  opacity: 0.5;
+
+  cursor: not-allowed;
+}
+
+/* COMPLETE */
+
+.exchange-complete {
+  text-align: center;
+}
+
+.exchange-success-icon {
+  width: 52px;
+  height: 52px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin:
+    0 auto 15px;
+
+  border-radius: 50%;
+
+  background: #effaf4;
+  color: #247447;
+
+  font-size: 23px;
+  font-weight: 800;
+}
+
+.exchange-complete h2 {
+  margin: 0;
+
+  font-size: 21px;
+}
+
+.exchange-complete >
+span {
+  display: block;
+
+  margin-top: 5px;
+
+  color: #999;
+
+  font-size: 9px;
+}
+
+.exchange-complete-summary {
+  margin: 20px 0;
+
+  border-top:
+    1px solid #eeeeef;
+
+  border-bottom:
+    1px solid #eeeeef;
+
+  padding: 10px 0;
+}
+
+.exchange-complete-summary >
+div {
+  display: flex;
+  flex-direction: column;
+
+  padding: 8px 0;
+}
+
+.exchange-complete-summary span {
+  color: #999;
+
+  font-size: 8px;
+}
+
+.exchange-complete-summary strong {
+  margin-top: 3px;
+
+  font-size: 11px;
+}
+
+.exchange-complete-summary small {
+  margin-top: 2px;
+
+  color: #888;
+
+  font-size: 8px;
+}
+
+.exchange-complete >
+.exchange-confirm {
+  width: 100%;
+}

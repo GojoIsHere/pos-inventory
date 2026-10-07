@@ -1,12 +1,22 @@
 import { getDatabase } from "../../lib/database";
 
 export interface DashboardMetrics {
-  todayRevenuePaisa: number;
+  grossSalesPaisa: number;
+
+  refundPaisa: number;
+
+  exchangeRevenuePaisa: number;
+
+  netSalesPaisa: number;
+
   todayTransactions: number;
+
   todayUnitsSold: number;
+
   averageSalePaisa: number;
 
   activeProducts: number;
+
   lowStockVariants: number;
 }
 
@@ -24,6 +34,11 @@ export interface RecentSale {
   totalPaisa: number;
 
   createdAt: string;
+
+  status:
+    | "completed"
+    | "partially_refunded"
+    | "refunded";
 }
 
 export interface LowStockVariant {
@@ -70,98 +85,158 @@ export async function getDashboardData():
   ] = await Promise.all([
     db.select<DashboardMetrics[]>(
       `
+        WITH
+        sale_activity AS (
+          SELECT
+            COALESCE(
+              SUM(total_paisa),
+              0
+            ) AS grossSalesPaisa,
+
+            COUNT(*)
+              AS transactions
+
+          FROM sales
+
+          WHERE
+            status IN (
+              'completed',
+              'partially_refunded',
+              'refunded'
+            )
+
+            AND date(
+              created_at,
+              'localtime'
+            ) = date(
+              'now',
+              'localtime'
+            )
+        ),
+
+        refund_activity AS (
+          SELECT
+            COALESCE(
+              SUM(
+                total_refund_paisa
+              ),
+              0
+            ) AS refundPaisa
+
+          FROM refunds
+
+          WHERE
+            status = 'completed'
+
+            AND date(
+              created_at,
+              'localtime'
+            ) = date(
+              'now',
+              'localtime'
+            )
+        ),
+
+        exchange_activity AS (
+          SELECT
+            COALESCE(
+              SUM(
+                ep.amount_paisa
+              ),
+              0
+            ) AS exchangeRevenuePaisa
+
+          FROM exchange_payments ep
+
+          INNER JOIN exchanges e
+            ON e.id =
+              ep.exchange_id
+
+          WHERE
+            e.status =
+              'completed'
+
+            AND date(
+              ep.confirmed_at,
+              'localtime'
+            ) = date(
+              'now',
+              'localtime'
+            )
+        ),
+
+        unit_activity AS (
+          SELECT
+            COALESCE(
+              SUM(
+                si.quantity
+              ),
+              0
+            ) AS todayUnitsSold
+
+          FROM sale_items si
+
+          INNER JOIN sales s
+            ON s.id =
+              si.sale_id
+
+          WHERE
+            s.status IN (
+              'completed',
+              'partially_refunded',
+              'refunded'
+            )
+
+            AND date(
+              s.created_at,
+              'localtime'
+            ) = date(
+              'now',
+              'localtime'
+            )
+        )
+
         SELECT
+          sa.grossSalesPaisa,
 
-          COALESCE(
-            (
-              SELECT SUM(total_paisa)
+          ra.refundPaisa,
 
-              FROM sales
-
-              WHERE
-                status = 'completed'
-
-                AND date(
-                  created_at,
-                  'localtime'
-                ) = date(
-                  'now',
-                  'localtime'
-                )
-            ),
-            0
-          ) AS todayRevenuePaisa,
-
+          ea.exchangeRevenuePaisa,
 
           (
-            SELECT COUNT(*)
+            sa.grossSalesPaisa
+            +
+            ea.exchangeRevenuePaisa
+            -
+            ra.refundPaisa
+          ) AS netSalesPaisa,
 
-            FROM sales
+          sa.transactions
+            AS todayTransactions,
 
-            WHERE
-              status = 'completed'
+          ua.todayUnitsSold,
 
-              AND date(
-                created_at,
-                'localtime'
-              ) = date(
-                'now',
-                'localtime'
-              )
-          ) AS todayTransactions,
-
-
-          COALESCE(
-            (
-              SELECT SUM(
-                si.quantity
-              )
-
-              FROM sale_items si
-
-              INNER JOIN sales s
-                ON s.id =
-                  si.sale_id
-
-              WHERE
-                s.status =
-                  'completed'
-
-                AND date(
-                  s.created_at,
-                  'localtime'
-                ) = date(
-                  'now',
-                  'localtime'
+          CASE
+            WHEN
+              sa.transactions > 0
+            THEN
+              CAST(
+                (
+                  sa.grossSalesPaisa
+                  +
+                  ea.exchangeRevenuePaisa
+                  -
+                  ra.refundPaisa
                 )
-            ),
-            0
-          ) AS todayUnitsSold,
+                /
+                sa.transactions
 
-
-          COALESCE(
-            (
-              SELECT CAST(
-                AVG(total_paisa)
                 AS INTEGER
               )
 
-              FROM sales
-
-              WHERE
-                status = 'completed'
-
-                AND date(
-                  created_at,
-                  'localtime'
-                ) = date(
-                  'now',
-                  'localtime'
-                )
-            ),
-            0
-          ) AS averageSalePaisa,
-
+            ELSE 0
+          END
+            AS averageSalePaisa,
 
           (
             SELECT COUNT(*)
@@ -171,7 +246,6 @@ export async function getDashboardData():
             WHERE
               is_active = 1
           ) AS activeProducts,
-
 
           (
             SELECT COUNT(*)
@@ -194,14 +268,20 @@ export async function getDashboardData():
                 i.quantity_on_hand
                   <=
                 i.reorder_level
-          ) AS lowStockVariants;
+          ) AS lowStockVariants
+
+        FROM sale_activity sa
+
+        CROSS JOIN refund_activity ra
+        CROSS JOIN exchange_activity ea
+        CROSS JOIN unit_activity ua;
       `
     ),
 
     db.select<RecentSale[]>(
       `
         SELECT
-          s.id,
+          s.id, s.status,
 
           s.receipt_number
             AS receiptNumber,
@@ -237,8 +317,11 @@ export async function getDashboardData():
             s.cashier_id
 
         WHERE
-          s.status =
-            'completed'
+          s.status IN (
+            'completed',
+            'partially_refunded',
+            'refunded'
+          )
 
         ORDER BY
           s.created_at DESC,
@@ -364,9 +447,24 @@ export async function getDashboardData():
 
   return {
     metrics: {
-      todayRevenuePaisa:
+      grossSalesPaisa:
         Number(
-          metrics.todayRevenuePaisa
+          metrics.grossSalesPaisa
+        ),
+
+      refundPaisa:
+        Number(
+          metrics.refundPaisa
+        ),
+
+      exchangeRevenuePaisa:
+        Number(
+          metrics.exchangeRevenuePaisa
+        ),
+
+      netSalesPaisa:
+        Number(
+          metrics.netSalesPaisa
         ),
 
       todayTransactions:

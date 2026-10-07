@@ -134,9 +134,11 @@ export default function AppShell({
         );
 
       case "sales":
-        return (
-          <SalesPage />
-        );
+      return (
+        <SalesPage
+          user={user}
+        />
+      );
 
       case "reports":
         return (

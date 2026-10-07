@@ -608,3 +608,56 @@ div:first-child span {
       1fr;
   }
 }
+
+.dashboard-accounting-summary {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      3,
+      minmax(0, 1fr)
+    );
+
+  gap: 10px;
+
+  margin-bottom: 18px;
+}
+
+.dashboard-accounting-summary >
+div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  border: 1px solid #e1e2e4;
+  border-radius: 9px;
+
+  padding: 10px 13px;
+
+  background: white;
+}
+
+.dashboard-accounting-summary span {
+  color: #888;
+
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.dashboard-accounting-summary strong {
+  font-size: 10px;
+}
+
+.dashboard-accounting-summary
+.refund strong {
+  color: #a52d2d;
+}
+
+@media (
+  max-width: 650px
+) {
+  .dashboard-accounting-summary {
+    grid-template-columns:
+      1fr;
+  }
+}

@@ -197,33 +197,38 @@ export default function ReportsPage() {
 
   const maxDailyRevenue =
     useMemo(
-      () =>
+        () =>
         Math.max(
-          ...(
+            ...(
             data?.dailySales.map(
-              (day) =>
-                day.revenuePaisa
+                (day) =>
+                Math.abs(
+                    day.netSalesPaisa
+                )
             ) ?? [0]
-          ),
-          1
+            ),
+            1
         ),
-      [data]
+        [data]
     );
 
   const paymentTotal =
     useMemo(
-      () =>
+        () =>
         data?.paymentBreakdown
-          .reduce(
+            .reduce(
             (
-              total,
-              payment
+                total,
+                payment
             ) =>
-              total +
-              payment.amountPaisa,
+                total +
+                Math.max(
+                payment.netAmountPaisa,
+                0
+                ),
             0
-          ) ?? 0,
-      [data]
+            ) ?? 0,
+        [data]
     );
 
   return (
@@ -378,55 +383,57 @@ export default function ReportsPage() {
         <>
           <div className="reports-kpis">
             <div className="report-kpi primary">
-              <span>
-                Revenue
-              </span>
+                <span>
+                    Net Sales
+                </span>
 
-              <strong>
-                {formatMoney(
-                  data.metrics
-                    .revenuePaisa
-                )}
-              </strong>
+                <strong>
+                    {formatMoney(
+                    data.metrics
+                        .netSalesPaisa
+                    )}
+                </strong>
 
-              <small>
-                Completed sales
-              </small>
+                <small>
+                    Gross + exchanges − refunds
+                </small>
+                </div>
+
+            <div className="report-kpi">
+                <span>
+                    Net Units
+                </span>
+
+                <strong>
+                    {
+                    data.metrics
+                        .netUnits
+                    }
+                </strong>
+
+                <small>
+                    {data.metrics.unitsSold} sold
+                    {" • "}
+                    {data.metrics.unitsReturned} returned
+                </small>
             </div>
 
             <div className="report-kpi">
-              <span>
-                Transactions
-              </span>
+                <span>
+                    Transactions
+                </span>
 
-              <strong>
-                {
-                  data.metrics
-                    .transactions
-                }
-              </strong>
+                <strong>
+                    {
+                    data.metrics
+                        .transactions
+                    }
+                </strong>
 
-              <small>
-                Completed orders
-              </small>
-            </div>
-
-            <div className="report-kpi">
-              <span>
-                Units Sold
-              </span>
-
-              <strong>
-                {
-                  data.metrics
-                    .unitsSold
-                }
-              </strong>
-
-              <small>
-                Products sold
-              </small>
-            </div>
+                <small>
+                    Completed sales
+                </small>
+                </div>
 
             <div className="report-kpi">
               <span>
@@ -447,50 +454,92 @@ export default function ReportsPage() {
           </div>
 
           <div className="reports-financial-kpis">
-            <div>
-              <span>
-                Discounts Given
-              </span>
+                <div>
+                    <span>
+                    Gross Sales
+                    </span>
 
-              <strong>
-                {formatMoney(
-                  data.metrics
-                    .discountPaisa
-                )}
-              </strong>
+                    <strong>
+                    {formatMoney(
+                        data.metrics
+                        .grossSalesPaisa
+                    )}
+                    </strong>
+                </div>
+
+                <div>
+                    <span>
+                    Exchange Upsells
+                    </span>
+
+                    <strong>
+                    +{" "}
+                    {formatMoney(
+                        data.metrics
+                        .exchangeRevenuePaisa
+                    )}
+                    </strong>
+                </div>
+
+                <div className="refund-report">
+                    <span>
+                    Refunds
+                    </span>
+
+                    <strong>
+                    −{" "}
+                    {formatMoney(
+                        data.metrics
+                        .refundsPaisa
+                    )}
+                    </strong>
+                </div>
+
+                <div className="profit">
+                    <span>
+                    Estimated Gross Profit
+                    </span>
+
+                    <strong>
+                    {formatMoney(
+                        data.metrics
+                        .estimatedGrossProfitPaisa
+                    )}
+                    </strong>
+
+                    <small>
+                    Current cost-price estimate
+                    </small>
+                </div>
             </div>
 
-            <div>
-              <span>
-                Tax Collected
-              </span>
+            <div className="reports-tax-summary">
+                <div>
+                    <span>
+                    Net Discounts
+                    </span>
 
-              <strong>
-                {formatMoney(
-                  data.metrics
-                    .taxPaisa
-                )}
-              </strong>
-            </div>
+                    <strong>
+                    {formatMoney(
+                        data.metrics
+                        .netDiscountPaisa
+                    )}
+                    </strong>
+                </div>
 
-            <div className="profit">
-              <span>
-                Estimated Gross Profit
-              </span>
+                <div>
+                    <span>
+                    Net Tax Collected
+                    </span>
 
-              <strong>
-                {formatMoney(
-                  data.metrics
-                    .estimatedGrossProfitPaisa
-                )}
-              </strong>
-
-              <small>
-                Based on current
-                product cost prices
-              </small>
-            </div>
-          </div>
+                    <strong>
+                    {formatMoney(
+                        data.metrics
+                        .netTaxPaisa
+                    )}
+                    </strong>
+                </div>
+                </div>
 
           <div className="reports-main-grid">
             {/* DAILY SALES */}
@@ -503,7 +552,7 @@ export default function ReportsPage() {
                   </p>
 
                   <h3>
-                    Daily Revenue
+                    Daily Net Sales
                   </h3>
                 </div>
 
@@ -533,7 +582,9 @@ export default function ReportsPage() {
                         Math.max(
                           3,
                           (
-                            day.revenuePaisa /
+                            Math.abs(
+                                day.netSalesPaisa
+                                ) /
                             maxDailyRevenue
                           ) * 100
                         );
@@ -564,7 +615,7 @@ export default function ReportsPage() {
                           <div className="daily-value">
                             <strong>
                               {formatMoney(
-                                day.revenuePaisa
+                                  day.netSalesPaisa 
                               )}
                             </strong>
 
@@ -613,16 +664,18 @@ export default function ReportsPage() {
                   {data.paymentBreakdown.map(
                     (payment) => {
                       const percent =
-                        paymentTotal >
-                        0
-                          ? Math.round(
-                              (
-                                payment.amountPaisa /
+                        paymentTotal > 0
+                            ? Math.round(
+                                (
+                                Math.max(
+                                    payment.netAmountPaisa,
+                                    0
+                                )
+                                /
                                 paymentTotal
-                              ) *
-                                100
+                                ) * 100
                             )
-                          : 0;
+                            : 0;
 
                       return (
                         <div
@@ -640,16 +693,16 @@ export default function ReportsPage() {
                               </span>
 
                               <span>
-                                {
-                                  payment.transactions
-                                }{" "}
-                                transactions
-                              </span>
+                                {payment.paymentTransactions}
+                                {" payments • "}
+                                {payment.refundTransactions}
+                                {" refunds"}
+                               </span>
                             </div>
 
                             <strong>
                               {formatMoney(
-                                payment.amountPaisa
+                                payment.netAmountPaisa
                               )}
                             </strong>
                           </div>

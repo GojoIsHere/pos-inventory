@@ -236,10 +236,10 @@ p:not(.page-eyebrow) {
   display: grid;
 
   grid-template-columns:
-    repeat(
-      3,
-      minmax(0, 1fr)
-    );
+  repeat(
+    4,
+    minmax(0, 1fr)
+  );
 
   gap: 11px;
 
@@ -653,4 +653,53 @@ span:last-child {
     grid-template-columns:
       1fr;
   }
+}
+
+.reports-financial-kpis
+.refund-report {
+  border-color: #efcccc;
+
+  background: #fff8f8;
+}
+
+.reports-financial-kpis
+.refund-report strong {
+  color: #a52d2d;
+}
+
+.reports-tax-summary {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(0, 1fr)
+    );
+
+  gap: 10px;
+
+  margin-bottom: 15px;
+}
+
+.reports-tax-summary > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  border: 1px solid #e1e2e4;
+  border-radius: 9px;
+
+  padding: 10px 13px;
+
+  background: white;
+}
+
+.reports-tax-summary span {
+  color: #888;
+
+  font-size: 8px;
+}
+
+.reports-tax-summary strong {
+  font-size: 10px;
 }

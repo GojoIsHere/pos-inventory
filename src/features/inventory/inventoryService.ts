@@ -11,7 +11,9 @@ export type InventoryMovementType =
   | "restock"
   | "sale"
   | "return"
-  | "adjustment";
+  | "adjustment"
+  | "exchange_return"
+  | "exchange_out";
 
 export interface InventoryVariant {
   variantId: number;

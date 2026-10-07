@@ -685,3 +685,64 @@ p:not(.page-eyebrow) {
       1fr;
   }
 }
+
+
+.receipt-exchange-button {
+  align-self: flex-start;
+
+  margin-top: 6px;
+
+  border: 1px solid #d9dadd;
+  border-radius: 6px;
+
+  padding: 4px 7px;
+
+  background: white;
+  color: #555;
+
+  cursor: pointer;
+
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.receipt-exchange-button:hover {
+  border-color: #171717;
+
+  color: #171717;
+}
+
+.receipt-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 5px;
+
+  margin-top: 6px;
+}
+
+.receipt-item-actions
+.receipt-exchange-button {
+  margin-top: 0;
+}
+
+.receipt-refund-button {
+  border: 1px solid #efcccc;
+  border-radius: 6px;
+
+  padding: 4px 7px;
+
+  background: white;
+  color: #a52d2d;
+
+  cursor: pointer;
+
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.receipt-refund-button:hover {
+  border-color: #a52d2d;
+
+  background: #fff7f7;
+}
