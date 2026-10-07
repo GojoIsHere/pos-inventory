@@ -16,6 +16,7 @@ import {
 } from "./productService";
 
 import "./products.css";
+import ProductDetailsPanel from "./ProductDetailsPanel";
 
 interface ProductsPageProps {
   user: AuthUser;
@@ -151,6 +152,13 @@ export default function ProductsPage({
     useState<VariantDraft[]>([
       createEmptyVariant(),
     ]);
+
+    const [
+    selectedProductId,
+    setSelectedProductId,
+    ] = useState<number | null>(
+    null
+    );
 
   async function loadData() {
     try {
@@ -966,15 +974,22 @@ export default function ProductsPage({
                     <tr key={product.id}>
                       <td>
                         <div className="product-name-cell">
-                          <strong>
-                            {product.name}
-                          </strong>
+                            <button
+                                className="product-link-button"
+                                onClick={() =>
+                                setSelectedProductId(
+                                    product.id
+                                )
+                                }
+                            >
+                                {product.name}
+                            </button>
 
-                          <span>
-                            {product.brand ||
-                              "No brand"}
-                          </span>
-                        </div>
+                            <span>
+                                {product.brand ||
+                                "No brand"}
+                            </span>
+                            </div>
                       </td>
 
                       <td>
@@ -1007,6 +1022,22 @@ export default function ProductsPage({
                     </tr>
                   )
                 )}
+                {selectedProductId && (
+                    <ProductDetailsPanel
+                        productId={
+                        selectedProductId
+                        }
+                        user={user}
+                        onClose={() =>
+                        setSelectedProductId(
+                            null
+                        )
+                        }
+                        onInventoryChanged={
+                        loadData
+                        }
+                    />
+                    )}
               </tbody>
             </table>
           </div>

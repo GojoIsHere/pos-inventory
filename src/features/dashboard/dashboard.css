@@ -1,0 +1,610 @@
+.real-dashboard {
+  width: 100%;
+  max-width: 1200px;
+
+  margin: 0 auto;
+}
+
+/* =========================
+   HEADER
+   ========================= */
+
+.real-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+
+  gap: 20px;
+
+  margin-bottom: 22px;
+}
+
+.real-dashboard-header h2 {
+  margin: 0;
+
+  font-size: 27px;
+}
+
+.real-dashboard-header >
+div:first-child >
+p:not(.page-eyebrow) {
+  margin: 7px 0 0;
+
+  color: #777;
+
+  font-size: 12px;
+}
+
+.dashboard-header-actions {
+  display: flex;
+
+  gap: 8px;
+}
+
+.dashboard-refresh,
+.dashboard-new-sale {
+  border-radius: 8px;
+
+  padding: 9px 14px;
+
+  cursor: pointer;
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dashboard-refresh {
+  border: 1px solid #d9dadd;
+
+  background: white;
+  color: #555;
+}
+
+.dashboard-new-sale {
+  border: 1px solid #171717;
+
+  background: #171717;
+  color: white;
+}
+
+.dashboard-refresh:disabled {
+  opacity: 0.5;
+
+  cursor: not-allowed;
+}
+
+/* =========================
+   ERROR / LOADING
+   ========================= */
+
+.dashboard-loading {
+  padding: 70px 20px;
+
+  color: #999;
+
+  text-align: center;
+
+  font-size: 11px;
+}
+
+.dashboard-error {
+  margin-bottom: 15px;
+
+  border: 1px solid #ffd0d0;
+  border-radius: 8px;
+
+  padding: 11px 13px;
+
+  background: #fff2f2;
+  color: #9e2020;
+
+  font-size: 11px;
+}
+
+/* =========================
+   KPI CARDS
+   ========================= */
+
+.dashboard-kpis {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      4,
+      minmax(0, 1fr)
+    );
+
+  gap: 12px;
+
+  margin-bottom: 12px;
+}
+
+.dashboard-kpi {
+  min-height: 125px;
+
+  display: flex;
+  flex-direction: column;
+
+  border: 1px solid #e1e2e4;
+  border-radius: 13px;
+
+  padding: 17px;
+
+  background: white;
+}
+
+.dashboard-kpi.primary {
+  background: #171717;
+  color: white;
+
+  border-color: #171717;
+}
+
+.dashboard-kpi > span {
+  color: #888;
+
+  font-size: 9px;
+  font-weight: 700;
+
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.dashboard-kpi.primary >
+span {
+  color: #9fa1a6;
+}
+
+.dashboard-kpi strong {
+  margin-top: 14px;
+
+  font-size: 23px;
+  font-weight: 700;
+}
+
+.dashboard-kpi small {
+  margin-top: auto;
+
+  padding-top: 10px;
+
+  color: #aaa;
+
+  font-size: 8px;
+}
+
+/* =========================
+   SECONDARY STATS
+   ========================= */
+
+.dashboard-secondary-stats {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(0, 1fr)
+    );
+
+  gap: 12px;
+
+  margin-bottom: 18px;
+}
+
+.dashboard-secondary-stats button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  border: 1px solid #e1e2e4;
+  border-radius: 11px;
+
+  padding: 14px 16px;
+
+  background: white;
+  color: #171717;
+
+  cursor: pointer;
+
+  text-align: left;
+}
+
+.dashboard-secondary-stats button:hover {
+  border-color: #c7c9cc;
+
+  background: #fafafa;
+}
+
+.dashboard-secondary-stats button.warning {
+  border-color: #ead5ae;
+
+  background: #fffaf0;
+}
+
+.dashboard-secondary-stats button >
+div {
+  display: flex;
+  align-items: baseline;
+
+  gap: 9px;
+}
+
+.dashboard-secondary-stats button >
+div span {
+  color: #777;
+
+  font-size: 10px;
+}
+
+.dashboard-secondary-stats button >
+div strong {
+  font-size: 19px;
+}
+
+.dashboard-secondary-stats button >
+span {
+  color: #999;
+
+  font-size: 9px;
+}
+
+/* =========================
+   PANELS
+   ========================= */
+
+.dashboard-main-grid {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1.15fr)
+    minmax(0, 0.85fr);
+
+  gap: 14px;
+
+  margin-bottom: 14px;
+}
+
+.dashboard-panel {
+  border: 1px solid #e1e2e4;
+  border-radius: 13px;
+
+  background: white;
+
+  overflow: hidden;
+}
+
+.dashboard-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  padding: 16px 18px;
+
+  border-bottom:
+    1px solid #ededee;
+}
+
+.dashboard-panel-heading h3 {
+  margin: 0;
+
+  font-size: 14px;
+}
+
+.dashboard-panel-heading button {
+  border: none;
+
+  background: transparent;
+
+  color: #777;
+
+  cursor: pointer;
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.dashboard-panel-heading button:hover {
+  color: #171717;
+}
+
+/* =========================
+   RECENT SALES
+   ========================= */
+
+.dashboard-sales-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-sale-row {
+  width: 100%;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  gap: 15px;
+
+  border: none;
+  border-bottom:
+    1px solid #efeff0;
+
+  padding: 12px 18px;
+
+  background: white;
+  color: #171717;
+
+  cursor: pointer;
+
+  text-align: left;
+}
+
+.dashboard-sale-row:last-child {
+  border-bottom: none;
+}
+
+.dashboard-sale-row:hover {
+  background: #fafafa;
+}
+
+.dashboard-sale-main {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-sale-main strong {
+  overflow: hidden;
+
+  font-size: 10px;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-sale-main span {
+  margin-top: 3px;
+
+  color: #999;
+
+  font-size: 8px;
+}
+
+.dashboard-sale-right {
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+}
+
+.dashboard-sale-right >
+strong {
+  font-size: 10px;
+}
+
+.dashboard-payment {
+  border-radius: 20px;
+
+  padding: 3px 6px;
+
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.dashboard-payment.cash {
+  background: #effaf4;
+
+  color: #247447;
+}
+
+.dashboard-payment.qr {
+  background: #eef4ff;
+
+  color: #3561a8;
+}
+
+/* =========================
+   LOW STOCK
+   ========================= */
+
+.dashboard-stock-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-stock-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  gap: 15px;
+
+  padding: 12px 18px;
+
+  border-bottom:
+    1px solid #efeff0;
+}
+
+.dashboard-stock-row:last-child {
+  border-bottom: none;
+}
+
+.dashboard-stock-row >
+div:first-child {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-stock-row >
+div:first-child strong {
+  font-size: 10px;
+}
+
+.dashboard-stock-row >
+div:first-child span {
+  margin-top: 3px;
+
+  color: #999;
+
+  font-size: 8px;
+}
+
+.dashboard-stock-number {
+  flex-shrink: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  text-align: right;
+}
+
+.dashboard-stock-number strong {
+  color: #a45a11;
+
+  font-size: 15px;
+}
+
+.dashboard-stock-number span {
+  margin-top: 2px;
+
+  color: #999;
+
+  font-size: 7px;
+}
+
+/* =========================
+   TOP PRODUCTS
+   ========================= */
+
+.dashboard-top-products {
+  margin-bottom: 10px;
+}
+
+.top-products-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.top-product-row {
+  display: grid;
+
+  grid-template-columns:
+    30px minmax(0, 1fr)
+    auto;
+
+  align-items: center;
+
+  gap: 12px;
+
+  padding: 12px 18px;
+
+  border-bottom:
+    1px solid #efeff0;
+}
+
+.top-product-row:last-child {
+  border-bottom: none;
+}
+
+.top-product-rank {
+  width: 25px;
+  height: 25px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 7px;
+
+  background: #f1f2f3;
+
+  color: #777;
+
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.top-product-name {
+  display: flex;
+  flex-direction: column;
+}
+
+.top-product-name strong {
+  font-size: 10px;
+}
+
+.top-product-name span {
+  margin-top: 3px;
+
+  color: #999;
+
+  font-size: 8px;
+}
+
+.top-product-revenue {
+  font-size: 11px;
+}
+
+/* =========================
+   EMPTY STATES
+   ========================= */
+
+.dashboard-empty {
+  padding: 44px 18px;
+
+  color: #999;
+
+  text-align: center;
+
+  font-size: 10px;
+}
+
+.dashboard-empty.healthy {
+  color: #247447;
+
+  background: #fbfefc;
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+
+@media (
+  max-width: 1100px
+) {
+  .dashboard-kpis {
+    grid-template-columns:
+      repeat(
+        2,
+        minmax(0, 1fr)
+      );
+  }
+}
+
+@media (
+  max-width: 850px
+) {
+  .dashboard-main-grid {
+    grid-template-columns:
+      1fr;
+  }
+
+  .real-dashboard-header {
+    flex-direction:
+      column;
+  }
+}
+
+@media (
+  max-width: 650px
+) {
+  .dashboard-kpis,
+  .dashboard-secondary-stats {
+    grid-template-columns:
+      1fr;
+  }
+}

@@ -156,3 +156,263 @@ export async function createProduct(
     }
   );
 }
+
+export interface ProductVariantDetails {
+  id: number;
+
+  sku: string;
+  barcode: string | null;
+
+  size: string | null;
+  color: string | null;
+
+  costPricePaisa: number;
+  sellingPricePaisa: number;
+
+  quantityOnHand: number;
+  reorderLevel: number;
+}
+
+export interface ProductDetails {
+  id: number;
+
+  name: string;
+  brand: string | null;
+  description: string | null;
+
+  categoryName: string | null;
+
+  variants: ProductVariantDetails[];
+}
+
+export interface InventoryMovement {
+  id: number;
+
+  variantId: number;
+  sku: string;
+
+  movementType: string;
+  quantityChange: number;
+
+  note: string | null;
+
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export async function getProductDetails(
+  productId: number
+): Promise<ProductDetails> {
+  const db = await getDatabase();
+
+  const products = await db.select<
+    {
+      id: number;
+      name: string;
+      brand: string | null;
+      description: string | null;
+      categoryName: string | null;
+    }[]
+  >(
+    `
+      SELECT
+        p.id,
+        p.name,
+        p.brand,
+        p.description,
+        c.name AS categoryName
+
+      FROM products p
+
+      LEFT JOIN categories c
+        ON c.id = p.category_id
+
+      WHERE p.id = $1
+      LIMIT 1;
+    `,
+    [productId]
+  );
+
+  const product = products[0];
+
+  if (!product) {
+    throw new Error(
+      "Product not found."
+    );
+  }
+
+  const variants = await db.select<
+    {
+      id: number;
+
+      sku: string;
+      barcode: string | null;
+
+      size: string | null;
+      color: string | null;
+
+      costPricePaisa: number;
+      sellingPricePaisa: number;
+
+      quantityOnHand: number;
+      reorderLevel: number;
+    }[]
+  >(
+    `
+      SELECT
+        pv.id,
+        pv.sku,
+        pv.barcode,
+
+        pv.size,
+        pv.color,
+
+        pv.cost_price_paisa
+          AS costPricePaisa,
+
+        pv.selling_price_paisa
+          AS sellingPricePaisa,
+
+        i.quantity_on_hand
+          AS quantityOnHand,
+
+        i.reorder_level
+          AS reorderLevel
+
+      FROM product_variants pv
+
+      INNER JOIN inventory i
+        ON i.variant_id = pv.id
+
+      WHERE
+        pv.product_id = $1
+        AND pv.is_active = 1
+
+      ORDER BY
+        pv.color,
+        pv.size,
+        pv.id;
+    `,
+    [productId]
+  );
+
+  return {
+    ...product,
+
+    id: Number(product.id),
+
+    variants: variants.map(
+      (variant) => ({
+        ...variant,
+
+        id:
+          Number(variant.id),
+
+        costPricePaisa:
+          Number(
+            variant.costPricePaisa
+          ),
+
+        sellingPricePaisa:
+          Number(
+            variant.sellingPricePaisa
+          ),
+
+        quantityOnHand:
+          Number(
+            variant.quantityOnHand
+          ),
+
+        reorderLevel:
+          Number(
+            variant.reorderLevel
+          ),
+      })
+    ),
+  };
+}
+
+export async function getInventoryMovements(
+  productId: number
+): Promise<InventoryMovement[]> {
+  const db = await getDatabase();
+
+  const rows =
+    await db.select<
+      InventoryMovement[]
+    >(
+      `
+        SELECT
+          im.id,
+
+          im.variant_id
+            AS variantId,
+
+          pv.sku,
+
+          im.movement_type
+            AS movementType,
+
+          im.quantity_change
+            AS quantityChange,
+
+          im.note,
+
+          u.full_name
+            AS createdByName,
+
+          im.created_at
+            AS createdAt
+
+        FROM inventory_movements im
+
+        INNER JOIN product_variants pv
+          ON pv.id = im.variant_id
+
+        LEFT JOIN users u
+          ON u.id = im.created_by
+
+        WHERE pv.product_id = $1
+
+        ORDER BY
+          im.created_at DESC,
+          im.id DESC
+
+        LIMIT 50;
+      `,
+      [productId]
+    );
+
+  return rows.map((row) => ({
+    ...row,
+
+    id:
+      Number(row.id),
+
+    variantId:
+      Number(row.variantId),
+
+    quantityChange:
+      Number(row.quantityChange),
+  }));
+}
+export async function changeInventory(
+  variantId: number,
+  movementType:
+    | "restock"
+    | "adjustment",
+  quantityChange: number,
+  note: string | null,
+  createdBy: number
+): Promise<number> {
+  return invoke<number>(
+    "change_inventory",
+    {
+      variantId,
+      movementType,
+      quantityChange,
+      note,
+      createdBy,
+    }
+  );
+}

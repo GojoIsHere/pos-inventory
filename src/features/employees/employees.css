@@ -1,0 +1,411 @@
+.employees-page {
+  width: 100%;
+  max-width: 1200px;
+
+  margin: 0 auto;
+}
+
+/* HEADER */
+
+.employees-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  gap: 20px;
+
+  margin-bottom: 18px;
+}
+
+.employees-heading h2 {
+  margin: 0;
+
+  font-size: 27px;
+}
+
+.employees-heading > div >
+p:not(.page-eyebrow) {
+  margin: 7px 0 0;
+
+  color: #777;
+
+  font-size: 12px;
+}
+
+/* BUTTONS */
+
+.employee-primary-button,
+.employee-secondary-button {
+  border-radius: 8px;
+
+  padding: 10px 15px;
+
+  cursor: pointer;
+
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.employee-primary-button {
+  border: 1px solid #171717;
+
+  background: #171717;
+  color: white;
+}
+
+.employee-secondary-button {
+  border: 1px solid #d9dadd;
+
+  background: white;
+  color: #555;
+}
+
+.employee-primary-button:disabled {
+  opacity: 0.5;
+
+  cursor: not-allowed;
+}
+
+/* STATS */
+
+.employee-stats {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, 180px);
+
+  gap: 10px;
+
+  margin-bottom: 18px;
+}
+
+.employee-stats > div {
+  display: flex;
+  flex-direction: column;
+
+  border: 1px solid #e2e3e5;
+  border-radius: 10px;
+
+  padding: 13px 15px;
+
+  background: white;
+}
+
+.employee-stats span {
+  color: #999;
+
+  font-size: 9px;
+}
+
+.employee-stats strong {
+  margin-top: 4px;
+
+  font-size: 20px;
+}
+
+/* ALERTS */
+
+.employee-alert {
+  margin-bottom: 15px;
+
+  padding: 11px 13px;
+
+  border-radius: 8px;
+
+  font-size: 11px;
+}
+
+.employee-alert.error {
+  border: 1px solid #ffd0d0;
+
+  background: #fff2f2;
+
+  color: #9e2020;
+}
+
+.employee-alert.success {
+  border: 1px solid #ccebd8;
+
+  background: #effaf4;
+
+  color: #247447;
+}
+
+/* CREATE FORM */
+
+.employee-form-card {
+  margin-bottom: 18px;
+
+  border: 1px solid #e1e2e4;
+  border-radius: 14px;
+
+  padding: 22px;
+
+  background: white;
+}
+
+.employee-form-card h3 {
+  margin: 0;
+
+  font-size: 17px;
+}
+
+.employee-form-card >
+div:first-child >
+p:not(.page-eyebrow) {
+  margin: 6px 0 0;
+
+  color: #888;
+
+  font-size: 10px;
+}
+
+.employee-form-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(0, 1fr)
+    );
+
+  gap: 14px;
+
+  margin-top: 20px;
+}
+
+.employee-field {
+  display: flex;
+  flex-direction: column;
+
+  gap: 6px;
+}
+
+.employee-field label {
+  color: #444;
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.employee-field input {
+  width: 100%;
+
+  border: 1px solid #d9dadd;
+  border-radius: 8px;
+
+  padding: 10px 11px;
+
+  background: white;
+  color: #171717;
+
+  font: inherit;
+  font-size: 11px;
+
+  outline: none;
+}
+
+.employee-field input:focus {
+  border-color: #171717;
+
+  box-shadow:
+    0 0 0 3px
+    rgba(0, 0, 0, 0.05);
+}
+
+.employee-form-actions {
+  display: flex;
+  justify-content: flex-end;
+
+  gap: 8px;
+
+  margin-top: 20px;
+}
+
+/* TABLE */
+
+.employee-table-card {
+  border: 1px solid #e1e2e4;
+  border-radius: 14px;
+
+  background: white;
+
+  overflow: hidden;
+}
+
+.employee-table-wrapper {
+  overflow-x: auto;
+}
+
+.employee-table {
+  width: 100%;
+
+  border-collapse: collapse;
+}
+
+.employee-table th {
+  padding: 11px 17px;
+
+  background: #fafafa;
+
+  color: #888;
+
+  text-align: left;
+
+  font-size: 9px;
+  font-weight: 750;
+
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+
+  white-space: nowrap;
+}
+
+.employee-table td {
+  padding: 14px 17px;
+
+  border-top:
+    1px solid #eeeeef;
+
+  color: #666;
+
+  font-size: 10px;
+}
+
+.employee-name-cell {
+  display: flex;
+  align-items: center;
+
+  gap: 9px;
+}
+
+.employee-name-cell strong {
+  color: #222;
+
+  font-size: 10px;
+}
+
+.employee-avatar {
+  width: 30px;
+  height: 30px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  border-radius: 50%;
+
+  background: #f0f1f2;
+  color: #555;
+
+  font-size: 10px;
+  font-weight: 750;
+}
+
+/* ROLE / STATUS */
+
+.employee-role,
+.employee-status {
+  display: inline-block;
+
+  border-radius: 20px;
+
+  padding: 4px 8px;
+
+  font-size: 8px;
+  font-weight: 750;
+
+  text-transform: uppercase;
+}
+
+.employee-role.admin {
+  background: #eeeef8;
+
+  color: #5550a5;
+}
+
+.employee-role.cashier {
+  background: #eef4ff;
+
+  color: #3561a8;
+}
+
+.employee-status.active {
+  background: #effaf4;
+
+  color: #247447;
+}
+
+.employee-status.inactive {
+  background: #f2f2f2;
+
+  color: #888;
+}
+
+/* ACTIONS */
+
+.employee-deactivate-button,
+.employee-activate-button {
+  border-radius: 7px;
+
+  padding: 6px 9px;
+
+  background: white;
+
+  cursor: pointer;
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.employee-deactivate-button {
+  border:
+    1px solid #efcccc;
+
+  color: #a52d2d;
+}
+
+.employee-activate-button {
+  border:
+    1px solid #ccebd8;
+
+  color: #247447;
+}
+
+.admin-protected {
+  color: #aaa;
+
+  font-size: 9px;
+}
+
+.employee-empty {
+  padding: 55px 20px;
+
+  color: #999;
+
+  text-align: center;
+
+  font-size: 11px;
+}
+
+@media (
+  max-width: 750px
+) {
+  .employee-form-grid {
+    grid-template-columns:
+      1fr;
+  }
+
+  .employee-stats {
+    grid-template-columns:
+      1fr 1fr;
+  }
+
+  .employees-heading {
+    align-items:
+      flex-start;
+
+    flex-direction:
+      column;
+  }
+}

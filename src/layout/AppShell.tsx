@@ -9,6 +9,17 @@ import PlaceholderPage from "../components/PlaceholderPage";
 import "./app-shell.css";
 
 import ProductsPage from "../features/products/ProductsPage";
+import PosPage from "../features/pos/PosPage";
+
+import SalesPage from "../features/sales/SalesPage";
+
+import EmployeesPage from "../features/employees/EmployeesPage";
+
+import InventoryPage from "../features/inventory/InventoryPage";
+
+import SettingsPage from "../features/settings/SettingsPage";
+
+import ReportsPage from "../features/reports/ReportsPage";
 
 interface AppShellProps {
   user: AuthUser;
@@ -103,10 +114,9 @@ export default function AppShell({
 
       case "pos":
         return (
-          <PlaceholderPage
-            title="Point of Sale"
-            description="This will become the cashier workspace for scanning products, building carts and completing sales."
-          />
+          <PosPage
+            user={user}
+            />
         );
 
       case "products":
@@ -118,41 +128,32 @@ export default function AppShell({
 
       case "inventory":
         return (
-          <PlaceholderPage
-            title="Inventory"
-            description="Stock levels, restocking, adjustments and inventory movement history will live here."
-          />
+          <InventoryPage
+            user={user}
+            />
         );
 
       case "sales":
         return (
-          <PlaceholderPage
-            title="Sales"
-            description="Completed sales, receipts, payment records and transaction details will live here."
-          />
+          <SalesPage />
         );
 
       case "reports":
         return (
-          <PlaceholderPage
-            title="Reports"
-            description="Store performance, sales summaries and inventory reports will live here."
-          />
+          <ReportsPage />
         );
 
       case "employees":
         return (
-          <PlaceholderPage
-            title="Employees"
-            description="Administrator and cashier accounts will be managed here."
-          />
+            <EmployeesPage
+                user={user}
+            />
         );
 
       case "settings":
         return (
-          <PlaceholderPage
-            title="Settings"
-            description="Store information, tax configuration and application settings will live here."
+          <SettingsPage
+            user={user}
           />
         );
 
