@@ -86,26 +86,48 @@ fn clean_optional(value: Option<String>) -> Option<String> {
 }
 
 async fn ensure_admin(
-    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    transaction: &mut sqlx::Transaction<
+        '_,
+        sqlx::Sqlite,
+    >,
     user_id: i64,
 ) -> Result<(), String> {
-    let user: Option<(String, i64)> = sqlx::query_as(
-        "
-        SELECT role, is_active
-        FROM users
-        WHERE id = $1
-        LIMIT 1;
-        ",
-    )
-    .bind(user_id)
-    .fetch_optional(&mut **transaction)
-    .await
-    .map_err(|error| {
-        format!("Failed to verify administrator: {}", error)
-    })?;
+    let user: Option<(String, i64)> =
+        sqlx::query_as(
+            "
+            SELECT
+                access_role,
+                is_active
+
+            FROM users
+
+            WHERE id = $1
+
+            LIMIT 1;
+            ",
+        )
+        .bind(user_id)
+        .fetch_optional(
+            &mut **transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to verify administrator: {}",
+                error
+            )
+        })?;
 
     match user {
-        Some((role, 1)) if role == "admin" => Ok(()),
+        Some((
+            access_role,
+            1,
+        ))
+            if access_role
+                == "admin" =>
+        {
+            Ok(())
+        }
 
         _ => Err(
             "Administrator access is required."
@@ -764,15 +786,31 @@ struct ValidatedSaleItem {
 }
 
 async fn ensure_pos_user(
-    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    transaction: &mut sqlx::Transaction<
+        '_,
+        sqlx::Sqlite,
+    >,
     user_id: i64,
 ) -> Result<(), String> {
-    let user: Option<(String, i64)> =
-        sqlx::query_as(
+    let authorized: Option<i64> =
+        sqlx::query_scalar(
             "
-            SELECT role, is_active
+            SELECT id
+
             FROM users
-            WHERE id = $1
+
+            WHERE
+                id = $1
+
+                AND is_active = 1
+
+                AND access_role IN (
+                    'admin',
+                    'supervisor',
+                    'salesperson',
+                    'cashier'
+                )
+
             LIMIT 1;
             ",
         )
@@ -783,24 +821,68 @@ async fn ensure_pos_user(
         .await
         .map_err(|error| {
             format!(
-                "Failed to verify user: {}",
+                "Failed to verify employee: {}",
                 error
             )
         })?;
 
-    match user {
-        Some((role, 1))
-            if role == "admin"
-                || role == "cashier" =>
-        {
-            Ok(())
-        }
-
-        _ => Err(
-            "An active administrator or cashier account is required."
+    if authorized.is_none() {
+        return Err(
+            "This employee is not authorized to use the POS."
                 .to_string(),
-        ),
+        );
     }
+
+    Ok(())
+}
+
+async fn ensure_supervisor_or_admin(
+    transaction: &mut sqlx::Transaction<
+        '_,
+        sqlx::Sqlite,
+    >,
+    user_id: i64,
+) -> Result<(), String> {
+    let authorized: Option<i64> =
+        sqlx::query_scalar(
+            "
+            SELECT id
+
+            FROM users
+
+            WHERE
+                id = $1
+
+                AND is_active = 1
+
+                AND access_role IN (
+                    'admin',
+                    'supervisor'
+                )
+
+            LIMIT 1;
+            ",
+        )
+        .bind(user_id)
+        .fetch_optional(
+            &mut **transaction
+        )
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to verify supervisor authorization: {}",
+                error
+            )
+        })?;
+
+    if authorized.is_none() {
+        return Err(
+            "Supervisor or administrator authorization is required."
+                .to_string(),
+        );
+    }
+
+    Ok(())
 }
 
 fn calculate_percentage(
@@ -1624,14 +1706,20 @@ async fn create_cashier(
             username,
             password_hash,
             full_name,
+
             role,
+            access_role,
+
             is_active
         )
         VALUES (
             $1,
             $2,
             $3,
+
             'cashier',
+            'cashier',
+
             1
         );
         ",
@@ -1679,6 +1767,189 @@ async fn create_cashier(
         })?;
 
     Ok(cashier_id)
+}
+
+#[tauri::command]
+async fn create_employee(
+    full_name: String,
+    username: String,
+    password: String,
+    access_role: String,
+    created_by: i64,
+    db_instances: State<'_, DbInstances>,
+) -> Result<(), String> {
+    let full_name =
+        full_name.trim().to_string();
+
+    let username =
+        username
+            .trim()
+            .to_lowercase();
+
+    let access_role =
+        access_role
+            .trim()
+            .to_lowercase();
+
+    if full_name.is_empty() {
+        return Err(
+            "Employee name is required."
+                .to_string(),
+        );
+    }
+
+    if username.len() < 3 {
+        return Err(
+            "Username must contain at least 3 characters."
+                .to_string(),
+        );
+    }
+
+    if !username
+        .chars()
+        .all(|character| {
+            character
+                .is_ascii_alphanumeric()
+                || character == '_'
+                || character == '.'
+        })
+    {
+        return Err(
+            "Username may only contain letters, numbers, underscores and periods."
+                .to_string(),
+        );
+    }
+
+    if password.len() < 8 {
+        return Err(
+            "Password must contain at least 8 characters."
+                .to_string(),
+        );
+    }
+
+    if !matches!(
+        access_role.as_str(),
+        "supervisor"
+            | "salesperson"
+            | "cashier"
+    ) {
+        return Err(
+            "Invalid employee role."
+                .to_string(),
+        );
+    }
+
+    let password_hash =
+        hash_password(password)?;
+
+    let instances =
+        db_instances.0.read().await;
+
+    let database = instances
+        .get("sqlite:pos_inventory.db")
+        .ok_or_else(|| {
+            "Project S database is not loaded."
+                .to_string()
+        })?;
+
+    #[allow(unreachable_patterns)]
+    let pool = match database {
+        DbPool::Sqlite(pool) => pool,
+
+        _ => {
+            return Err(
+                "Project S requires SQLite."
+                    .to_string(),
+            );
+        }
+    };
+
+    let mut transaction =
+        pool.begin()
+            .await
+            .map_err(|error| {
+                format!(
+                    "Could not start employee transaction: {}",
+                    error
+                )
+            })?;
+
+    ensure_admin(
+        &mut transaction,
+        created_by,
+    )
+    .await?;
+
+    let result =
+        sqlx::query(
+            "
+            INSERT INTO users (
+                username,
+                password_hash,
+                full_name,
+
+                role,
+                access_role,
+
+                is_active
+            )
+            VALUES (
+                $1,
+                $2,
+                $3,
+
+                'cashier',
+                $4,
+
+                1
+            );
+            ",
+        )
+        .bind(username)
+        .bind(password_hash)
+        .bind(full_name)
+        .bind(access_role)
+        .execute(
+            &mut *transaction
+        )
+        .await;
+
+    match result {
+        Ok(_) => {}
+
+        Err(error) => {
+            if error
+                .to_string()
+                .contains(
+                    "UNIQUE constraint failed"
+                )
+            {
+                return Err(
+                    "That username already exists."
+                        .to_string(),
+                );
+            }
+
+            return Err(
+                format!(
+                    "Failed to create employee: {}",
+                    error
+                ),
+            );
+        }
+    }
+
+    transaction
+        .commit()
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to save employee: {}",
+                error
+            )
+        })?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -1733,9 +2004,12 @@ async fn set_cashier_active(
     let user: Option<(String,)> =
         sqlx::query_as(
             "
-            SELECT role
+            SELECT access_role
+
             FROM users
+
             WHERE id = $1
+
             LIMIT 1;
             ",
         )
@@ -1746,25 +2020,29 @@ async fn set_cashier_active(
         .await
         .map_err(|error| {
             format!(
-                "Failed to find cashier: {}",
+                "Failed to find employee: {}",
                 error
             )
         })?;
 
     match user {
-        Some((role,))
-            if role == "cashier" => {}
+        Some((access_role,))
+            if access_role
+                != "admin" =>
+        {
+            // Allowed.
+        }
 
         Some(_) => {
             return Err(
-                "Only cashier accounts can be changed here."
+                "Administrator accounts cannot be deactivated here."
                     .to_string(),
             );
         }
 
         None => {
             return Err(
-                "Cashier account not found."
+                "Employee account not found."
                     .to_string(),
             );
         }
@@ -3887,6 +4165,14 @@ pub fn run() {
             ),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "add_employee_roles",
+            sql: include_str!(
+                "../migrations/005_employee_roles.sql"
+            ),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -3907,6 +4193,7 @@ pub fn run() {
             change_inventory,
             complete_sale,
             create_cashier,
+            create_employee,
             set_cashier_active,
             save_settings,
             complete_exchange,

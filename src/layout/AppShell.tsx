@@ -1,10 +1,10 @@
 import { useState } from "react";
 
-import type { AuthUser } from "../types/auth";
+
 import type { AppPage } from "../types/navigation";
 
 import AdminDashboard from "../features/dashboard/AdminDashboard";
-import PlaceholderPage from "../components/PlaceholderPage";
+
 
 import "./app-shell.css";
 
@@ -21,6 +21,8 @@ import SettingsPage from "../features/settings/SettingsPage";
 
 import ReportsPage from "../features/reports/ReportsPage";
 
+import type { AuthUser, UserRole, } from "../types/auth";
+
 interface AppShellProps {
   user: AuthUser;
   onLogout: () => void;
@@ -29,14 +31,12 @@ interface AppShellProps {
 interface NavigationItem {
   key: AppPage;
   label: string;
-  adminOnly?: boolean;
 }
 
 const navigationItems: NavigationItem[] = [
   {
     key: "dashboard",
     label: "Dashboard",
-    adminOnly: true,
   },
   {
     key: "pos",
@@ -45,12 +45,10 @@ const navigationItems: NavigationItem[] = [
   {
     key: "products",
     label: "Products",
-    adminOnly: true,
   },
   {
     key: "inventory",
     label: "Inventory",
-    adminOnly: true,
   },
   {
     key: "sales",
@@ -59,19 +57,65 @@ const navigationItems: NavigationItem[] = [
   {
     key: "reports",
     label: "Reports",
-    adminOnly: true,
   },
   {
     key: "employees",
     label: "Employees",
-    adminOnly: true,
   },
   {
     key: "settings",
     label: "Settings",
-    adminOnly: true,
   },
 ];
+
+const allowedPagesByRole: Record<
+  UserRole,
+  AppPage[]
+> = {
+  admin: [
+    "dashboard",
+    "pos",
+    "products",
+    "inventory",
+    "sales",
+    "reports",
+    "employees",
+    "settings",
+  ],
+
+  supervisor: [
+    "dashboard",
+    "pos",
+    "products",
+    "inventory",
+    "sales",
+    "reports",
+  ],
+
+  salesperson: [
+    "pos",
+    "sales",
+  ],
+
+  cashier: [
+    "pos",
+    "sales",
+  ],
+};
+
+function getDefaultPage(
+  role: UserRole
+): AppPage {
+  if (
+    role === "admin"
+    ||
+    role === "supervisor"
+  ) {
+    return "dashboard";
+  }
+
+  return "pos";
+}
 
 const pageTitles: Record<AppPage, string> = {
   dashboard: "Dashboard",
@@ -90,19 +134,32 @@ export default function AppShell({
 }: AppShellProps) {
   const [activePage, setActivePage] =
     useState<AppPage>(
-      user.role === "admin"
-        ? "dashboard"
-        : "pos"
+      getDefaultPage(
+        user.role
+      )
     );
+
+  const allowedPages =
+    allowedPagesByRole[
+      user.role
+    ];
 
   const allowedNavigation =
     navigationItems.filter(
       (item) =>
-        !item.adminOnly ||
-        user.role === "admin"
+        allowedPages.includes(
+          item.key
+        )
     );
 
   function renderPage() {
+    if (
+      !allowedPages.includes(
+        activePage
+      )
+    ) {
+      return null;
+    }
     switch (activePage) {
       case "dashboard":
         return (

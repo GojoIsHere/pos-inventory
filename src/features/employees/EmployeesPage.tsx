@@ -10,9 +10,9 @@ import type {
 } from "../../types/auth";
 
 import {
-  createCashier,
+  createEmployee,
   getEmployees,
-  setCashierActive,
+  setEmployeeActive,
   type Employee,
 } from "./employeeService";
 
@@ -100,6 +100,15 @@ export default function EmployeesPage({
     setSuccess,
   ] = useState("");
 
+  const [
+  role,
+  setRole,
+] = useState<
+  | "supervisor"
+  | "salesperson"
+  | "cashier"
+>("cashier");
+
   async function loadEmployees() {
     try {
       setLoading(true);
@@ -125,24 +134,22 @@ export default function EmployeesPage({
     loadEmployees();
   }, []);
 
-  const activeCashiers =
-    useMemo(
-      () =>
-        employees.filter(
-          (employee) =>
-            employee.role ===
-              "cashier"
-            && employee.isActive ===
-              1
-        ).length,
-      [employees]
-    );
+  const activeEmployees =
+  useMemo(
+    () =>
+      employees.filter(
+        (employee) =>
+          employee.isActive
+      ).length,
+    [employees]
+  );
 
   function resetForm() {
     setFullName("");
     setUsername("");
     setPassword("");
     setConfirmPassword("");
+    setRole("cashier");
   }
 
   async function handleCreate(
@@ -166,12 +173,19 @@ export default function EmployeesPage({
 
       setSaving(true);
 
-      await createCashier(
+      await createEmployee({
         fullName,
+
         username,
+
         password,
-        user.id
-      );
+
+        accessRole:
+          role,
+
+        createdBy:
+          user.id,
+      });
 
       resetForm();
 
@@ -180,7 +194,7 @@ export default function EmployeesPage({
       await loadEmployees();
 
       setSuccess(
-        "Cashier account created successfully."
+        "Employee account created successfully."
       );
     } catch (err) {
       console.error(err);
@@ -203,9 +217,9 @@ export default function EmployeesPage({
 
     try {
       const nextStatus =
-        employee.isActive !== 1;
+        !employee.isActive;
 
-      await setCashierActive(
+      await setEmployeeActive(
         employee.id,
         nextStatus,
         user.id
@@ -242,8 +256,7 @@ export default function EmployeesPage({
           <h2>Employees</h2>
 
           <p>
-            Manage administrator and
-            cashier access to Project S.
+             Manage employee accounts, roles and access.
           </p>
         </div>
 
@@ -260,7 +273,7 @@ export default function EmployeesPage({
         >
           {showForm
             ? "Close form"
-            : "+ Add cashier"}
+            : "+ Add Employee"}
         </button>
       </div>
 
@@ -277,11 +290,11 @@ export default function EmployeesPage({
 
         <div>
           <span>
-            Active cashiers
+            Active employees
           </span>
 
           <strong>
-            {activeCashiers}
+            {activeEmployees}
           </strong>
         </div>
       </div>
@@ -307,15 +320,15 @@ export default function EmployeesPage({
         >
           <div>
             <p className="page-eyebrow">
-              NEW CASHIER
+              NEW EMPLOYEE
             </p>
 
             <h3>
-              Create cashier account
+              Create employee account
             </h3>
 
             <p>
-              The cashier will use this
+              The employee will use this
               username and password to
               sign into Project S.
             </p>
@@ -339,7 +352,7 @@ export default function EmployeesPage({
                       .value
                   )
                 }
-                placeholder="Cashier name"
+                placeholder="employe001"
                 required
               />
             </div>
@@ -417,6 +430,39 @@ export default function EmployeesPage({
               />
             </div>
           </div>
+          
+          <div className="employee-field">
+            <label>
+              Role
+            </label>
+
+            <select
+              value={role}
+              onChange={(
+                event
+              ) =>
+                setRole(
+                  event.target
+                    .value as
+                    | "supervisor"
+                    | "salesperson"
+                    | "cashier"
+                )
+              }
+            >
+              <option value="cashier">
+                Cashier
+              </option>
+
+              <option value="salesperson">
+                Sales Person
+              </option>
+
+              <option value="supervisor">
+                Supervisor
+              </option>
+            </select>
+          </div>
 
           <div className="employee-form-actions">
             <button
@@ -437,7 +483,7 @@ export default function EmployeesPage({
             >
               {saving
                 ? "Creating..."
-                : "Create Cashier"}
+                : "Create Employee"}
             </button>
           </div>
         </form>
@@ -514,23 +560,26 @@ export default function EmployeesPage({
                         <span
                           className={`employee-role ${employee.role}`}
                         >
-                          {
-                            employee.role
-                          }
+                          {employee.role ===
+                          "salesperson"
+                            ? "Sales Person"
+                            : employee.role
+                                .charAt(0)
+                                .toUpperCase()
+                              +
+                              employee.role.slice(1)}
                         </span>
                       </td>
 
                       <td>
                         <span
                           className={
-                            employee.isActive ===
-                            1
+                            employee.isActive
                               ? "employee-status active"
                               : "employee-status inactive"
                           }
                         >
-                          {employee.isActive ===
-                          1
+                          {employee.isActive
                             ? "Active"
                             : "Inactive"}
                         </span>
@@ -543,31 +592,29 @@ export default function EmployeesPage({
                       </td>
 
                       <td>
-                        {employee.role ===
-                        "cashier" ? (
-                          <button
-                            className={
-                              employee.isActive ===
-                              1
-                                ? "employee-deactivate-button"
-                                : "employee-activate-button"
-                            }
-                            onClick={() =>
-                              handleStatusChange(
-                                employee
-                              )
-                            }
-                          >
-                            {employee.isActive ===
-                            1
-                              ? "Deactivate"
-                              : "Activate"}
-                          </button>
-                        ) : (
-                          <span className="admin-protected">
-                            Protected
-                          </span>
-                        )}
+                        {employee.role !==
+                          "admin" ? (
+                            <button
+                              className={
+                                employee.isActive
+                                  ? "employee-deactivate-button"
+                                  : "employee-activate-button"
+                              }
+                              onClick={() =>
+                                handleStatusChange(
+                                  employee
+                                )
+                              }
+                            >
+                              {employee.isActive
+                                ? "Deactivate"
+                                : "Activate"}
+                            </button>
+                          ) : (
+                            <span className="admin-protected">
+                              Protected
+                            </span>
+                          )}
                       </td>
                     </tr>
                   )

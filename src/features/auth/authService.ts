@@ -37,7 +37,7 @@ export async function login(
         username,
         password_hash AS passwordHash,
         full_name AS fullName,
-        role,
+        access_role AS role,
         is_active AS isActive
       FROM users
       WHERE username = $1
@@ -140,9 +140,10 @@ export async function createFirstAdmin({
         password_hash,
         full_name,
         role,
+        access_role,
         is_active
       )
-      VALUES ($1, $2, $3, 'admin', 1);
+      VALUES ($1, $2, $3, 'admin','admin', 1);
     `,
     [
       cleanUsername,

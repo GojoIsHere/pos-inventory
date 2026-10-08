@@ -1,25 +1,52 @@
-import { invoke } from "@tauri-apps/api/core";
-import { getDatabase } from "../../lib/database";
+import {
+  invoke,
+} from "@tauri-apps/api/core";
+
+import {
+  getDatabase,
+} from "../../lib/database";
+
+import type {
+  UserRole,
+} from "../../types/auth";
+
 
 export interface Employee {
   id: number;
 
   fullName: string;
+
   username: string;
 
-  role: "admin" | "cashier";
+  role: UserRole;
 
-  isActive: number;
+  isActive: boolean;
 
   createdAt: string;
 }
 
+
 export async function getEmployees():
   Promise<Employee[]> {
-  const db = await getDatabase();
+  const db =
+    await getDatabase();
 
   const rows =
-    await db.select<Employee[]>(
+    await db.select<
+      {
+        id: number;
+
+        fullName: string;
+
+        username: string;
+
+        role: UserRole;
+
+        isActive: number;
+
+        createdAt: string;
+      }[]
+    >(
       `
         SELECT
           id,
@@ -29,7 +56,8 @@ export async function getEmployees():
 
           username,
 
-          role,
+          access_role
+            AS role,
 
           is_active
             AS isActive,
@@ -40,13 +68,24 @@ export async function getEmployees():
         FROM users
 
         ORDER BY
-          CASE
-            WHEN role = 'admin'
-            THEN 0
-            ELSE 1
+          CASE access_role
+            WHEN 'admin'
+              THEN 1
+
+            WHEN 'supervisor'
+              THEN 2
+
+            WHEN 'salesperson'
+              THEN 3
+
+            WHEN 'cashier'
+              THEN 4
+
+            ELSE 5
           END,
 
-          full_name COLLATE NOCASE;
+          full_name
+            COLLATE NOCASE;
       `
     );
 
@@ -58,38 +97,68 @@ export async function getEmployees():
         Number(row.id),
 
       isActive:
-        Number(row.isActive),
+        Boolean(row.isActive),
     })
   );
 }
 
-export async function createCashier(
-  fullName: string,
-  username: string,
-  password: string,
-  createdBy: number
-): Promise<number> {
-  return invoke<number>(
-    "create_cashier",
+
+export async function createEmployee(
+  input: {
+    fullName: string;
+
+    username: string;
+
+    password: string;
+
+    accessRole:
+      | "supervisor"
+      | "salesperson"
+      | "cashier";
+
+    createdBy: number;
+  }
+): Promise<void> {
+  await invoke(
+    "create_employee",
     {
-      fullName,
-      username,
-      password,
-      createdBy,
+      fullName:
+        input.fullName,
+
+      username:
+        input.username,
+
+      password:
+        input.password,
+
+      accessRole:
+        input.accessRole,
+
+      createdBy:
+        input.createdBy,
     }
   );
 }
 
-export async function setCashierActive(
-  cashierId: number,
+
+export async function setEmployeeActive(
+  employeeId: number,
   isActive: boolean,
   updatedBy: number
 ): Promise<void> {
+  /*
+   * We're temporarily calling the old
+   * Rust command name. We will rename
+   * it later when we clean up.
+   */
   await invoke(
     "set_cashier_active",
     {
-      cashierId,
+      cashierId:
+        employeeId,
+
       isActive,
+
       updatedBy,
     }
   );

@@ -19,7 +19,7 @@ import type {
   AuthUser,
 } from "../../types/auth";
 
-import RefundModal from "../refunds/RefundModal";
+import RefundModal from "../refund/RefundModal";
 
 interface SaleDetailsModalProps {
   saleId: number;
